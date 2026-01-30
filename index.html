@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Clean Social</title>
+  <link rel="stylesheet" href="styles/app.css">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  
+  <!-- AI SIDEBAR CSS (ADD THIS STYLE BLOCK) -->
+  <style>
+    /* ============== AI SIDEBAR ============== */
+    .ai-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      color: #aaa;
+      cursor: pointer;
+      border-radius: 4px;
+      margin-left: 10px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .ai-toggle:hover {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+    }
+    .ai-toggle.active {
+      background: rgba(138, 107, 255, 0.15);
+      color: #8a6bff;
+      box-shadow: 0 0 0 2px rgba(138, 107, 255, 0.2);
+    }
+
+    .ai-sidebar {
+      position: fixed;
+      top: 0;
+      left: -420px;
+      width: 400px;
+      height: 100%;
+      background: #1a1a1a;
+      border-right: 1px solid #333;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 5px 0 25px rgba(0,0,0,0.4);
+      transition: left 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+      overflow: hidden;
+    }
+    .ai-sidebar.open {
+      left: 0;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .sidebar-header h2 {
+      font-size: 1.3rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #e0e0e0;
+    }
+    .sidebar-close {
+      background: #2d2d2d;
+      border: 1px solid #444;
+      color: #aaa;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .sidebar-close:hover {
+      background: #3a3a3a;
+      color: #fff;
+      border-color: #555;
+    }
+
+    .model-selector {
+      padding: 14px 16px;
+      border-bottom: 1px solid #333;
+      background: #151515;
+      flex-shrink: 0;
+    }
+    #ai-model-select {
+      width: 100%;
+      background: #252525;
+      color: #e0e0e0;
+      border: 1px solid #444;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 15px;
+      margin-top: 8px;
+      appearance: none;
+      background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23aaa' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      background-size: 16px;
+    }
+    #ai-model-select:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .model-size {
+      font-size: 12px;
+      color: #777;
+      margin-top: 6px;
+      font-family: monospace;
+    }
+
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      background: #121212;
+    }
+    .chat-message {
+      max-width: 90%;
+      padding: 14px 18px;
+      border-radius: 14px;
+      line-height: 1.5;
+      position: relative;
+      font-size: 15px;
+    }
+    .user-message {
+      background: #2a3b5c;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+      margin-left: auto;
+    }
+    .ai-message {
+      background: #252525;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .ai-message.loading::after {
+      content: "▌";
+      display: inline-block;
+      animation: blink 1s infinite;
+      margin-left: 4px;
+    }
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    .chat-input-container {
+      padding: 16px;
+      border-top: 1px solid #333;
+      background: #151515;
+      display: flex;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    #ai-chat-input {
+      flex: 1;
+      background: #252525;
+      color: #e0e0e0;
+      border: 1px solid #444;
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 15px;
+      resize: none;
+      min-height: 24px;
+      max-height: 120px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #ai-chat-input:focus {
+      border-color: #8a6bff;
+      box-shadow: 0 0 0 2px rgba(138, 107, 255, 0.2);
+    }
+    #ai-chat-input:disabled {
+      background: #1e1e1e;
+      color: #666;
+      cursor: not-allowed;
+    }
+    .send-btn {
+      background: #8a6bff;
+      color: white;
+      border: none;
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(138, 107, 255, 0.3);
+    }
+    .send-btn:hover:not(:disabled) {
+      background: #7a5bff;
+      transform: scale(1.05);
+    }
+    .send-btn:disabled {
+      background: #444;
+      cursor: not-allowed;
+      transform: none;
+      opacity: 0.7;
+    }
+    .send-btn:active {
+      transform: scale(0.95);
+    }
+
+    .sidebar-footer {
+      padding: 12px 16px;
+      border-top: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #151515;
+      flex-shrink: 0;
+    }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ff5555;
+      flex-shrink: 0;
+    }
+    .status-dot.online {
+      background: #4ade80;
+      box-shadow: 0 0 8px #4ade80;
+    }
+    #ai-status-text {
+      color: #bbb;
+      font-weight: 500;
+    }
+    .start-btn {
+      background: #2d2d2d;
+      border: 1px solid #444;
+      color: #e0e0e0;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .start-btn:hover:not(:disabled) {
+      background: #3a3a3a;
+      border-color: #555;
+    }
+    .start-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .start-btn.danger {
+      background: #ff5555;
+      border-color: #ff3333;
+    }
+    .start-btn.danger:hover {
+      background: #ff3333;
+    }
+
+    /* Prevent sidebar from covering titlebar controls */
+    @media (max-width: 1200px) {
+      .ai-sidebar {
+        width: 360px;
+      }
+    }
+    
+    /* Ensure sidebar appears above webviews but below devtools */
+    .ai-sidebar {
+      z-index: 2000;
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- Scanline effect -->
+  <div class="scanlines"></div>
+
+  <!-- Custom Titlebar (MODIFIED: Added AI toggle) -->
+  <div class="titlebar">
+    <div class="titlebar-drag">
+      <div class="app-logo">
+        <i data-lucide="sparkles"></i>
+      </div>
+      <span class="app-title">CLEAN SOCIAL</span>
+     
+    </div>
+    
+    <!-- AdBlock indicator in titlebar -->
+    <div class="adblock-indicator" id="adblock-indicator" title="Ads Blocked">
+      <i data-lucide="shield-check"></i>
+      <span id="blocked-count">0</span>
+    </div>
+    
+    <div class="titlebar-controls">
+      <button onclick="browserAPI.minimize()" class="ctrl-btn">
+        <i data-lucide="minus"></i>
+      </button>
+      <button onclick="browserAPI.maximize()" class="ctrl-btn">
+        <i data-lucide="square"></i>
+      </button>
+      <button onclick="browserAPI.close()" class="ctrl-btn close">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Navigation Bar -->
+  <div class="nav-bar">
+    <!-- Back/Forward/Refresh -->
+    <div class="nav-buttons">
+      <button class="nav-btn" id="btn-back" title="Back">
+        <i data-lucide="chevron-left"></i>
+      </button>
+      <button class="nav-btn" id="btn-forward" title="Forward">
+        <i data-lucide="chevron-right"></i>
+      </button>
+      <button class="nav-btn" id="btn-refresh" title="Refresh">
+        <i data-lucide="rotate-cw"></i>
+      </button>
+      <button class="nav-btn" id="btn-home" title="Home">
+        <i data-lucide="home"></i>
+      </button>
+    </div>
+
+    <!-- URL Bar -->
+    <div class="url-bar-container">
+      <div class="url-bar-wrapper">
+        <span class="url-bar-icon">
+          <i data-lucide="search"></i>
+        </span>
+        <input 
+          type="text" 
+          id="url-bar" 
+          class="url-bar" 
+          placeholder="Search with Startpage or enter URL..."
+          spellcheck="false"
+          autocomplete="off"
+        >
+        <div class="url-security" id="url-security" title="Secure Connection">
+          <i data-lucide="lock"></i>
+        </div>
+        <div class="typing-indicator" id="typing-indicator">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+      <button class="url-go-btn" id="url-go">
+        <i data-lucide="arrow-right"></i>
+      </button>
+    </div>
+
+    <!-- Quick Access Buttons -->
+    <div class="quick-sites">
+      <button class="quick-btn" data-url="https://x.com" title="Twitter/X">
+        <i data-lucide="twitter"></i>
+      </button>
+      <button class="quick-btn" data-url="https://www.instagram.com" title="Instagram">
+        <i data-lucide="instagram"></i>
+      </button>
+      <button class="quick-btn" data-url="https://www.reddit.com" title="Reddit">
+        <i data-lucide="message-circle"></i>
+      </button>
+      <button class="quick-btn" data-url="https://www.youtube.com" title="YouTube">
+        <i data-lucide="youtube"></i>
+      </button>
+      <button class="quick-btn" data-url="https://www.facebook.com" title="Facebook">
+        <i data-lucide="facebook"></i>
+      </button>
+      <button class="quick-btn" data-url="https://www.twitch.tv" title="Twitch">
+        <i data-lucide="twitch"></i>
+      </button>
+      <button class="quick-btn" data-url="https://www.github.com" title="GitHub">
+        <i data-lucide="github"></i>
+      </button>
+      <button class="quick-btn" data-url="https://discord.com/app" title="Discord">
+        <i data-lucide="message-square"></i>
+      </button>
+      <button class="quick-btn" id="ai-toggle" title="Toggle AI Assistant">
+        <i data-lucide="bot"></i>
+      </button>
+    </div>
+
+    <!-- Settings -->
+    <button class="settings-btn" id="settings-toggle" title="Settings">
+      <i data-lucide="settings"></i>
+    </button>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar" id="tab-bar">
+    <button class="new-tab-btn" id="new-tab" title="New Tab">
+      <i data-lucide="plus"></i>
+    </button>
+  </div>
+
+  <!-- View Container -->
+  <div class="view-container" id="view-container">
+  </div>
+
+  <!-- Settings Panel (UNCHANGED) -->
+  <div class="settings-panel" id="settings-panel">
+    <div class="settings-header">
+      <h2><i data-lucide="settings"></i> SETTINGS</h2>
+      <button class="settings-close" id="settings-close">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    
+    <div class="settings-content">
+      <div class="settings-section">
+        <h3><i data-lucide="shield"></i> Ad Blocker</h3>
+        <label class="toggle-switch">
+          <input type="checkbox" id="adblock-toggle" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Block Ads & Trackers</span>
+        </label>
+        <div class="adblock-stats">
+          <div class="stat">
+            <i data-lucide="shield-off"></i>
+            <span id="total-blocked">0</span>
+            <small>Blocked this session</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3><i data-lucide="volume-2"></i> Sound Effects</h3>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="sound.enabled" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Typing Sounds</span>
+        </label>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="sound.navigation" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Navigation Sounds</span>
+        </label>
+      </div>
+
+      <div class="settings-section">
+        <h3><i data-lucide="search"></i> Search Engine</h3>
+        <div class="radio-group">
+          <label class="radio-option">
+            <input type="radio" name="search" data-search="startpage" checked>
+            <span class="radio-custom"></span>
+            <span class="radio-label">
+              <strong>Startpage</strong>
+              <small>Private Google results</small>
+            </span>
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="search" data-search="duckduckgo">
+            <span class="radio-custom"></span>
+            <span class="radio-label">
+              <strong>DuckDuckGo</strong>
+              <small>Privacy focused</small>
+            </span>
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="search" data-search="brave">
+            <span class="radio-custom"></span>
+            <span class="radio-label">
+              <strong>Brave Search</strong>
+              <small>Independent index</small>
+            </span>
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="search" data-search="google">
+            <span class="radio-custom"></span>
+            <span class="radio-label">
+              <strong>Google</strong>
+              <small>Most results</small>
+            </span>
+          </label>
+        </div>
+      </div>
+      
+      <div class="settings-section">
+        <h3><i data-lucide="twitter"></i> Twitter / X</h3>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="twitter.hideGrok" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Hide Grok AI</span>
+        </label>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="twitter.hidePromoted" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Hide Promoted Tweets</span>
+        </label>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="twitter.hidePremium" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Hide Premium Upsells</span>
+        </label>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="twitter.hideTrends">
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Hide Trends Sidebar</span>
+        </label>
+      </div>
+
+      <div class="settings-section">
+        <h3><i data-lucide="instagram"></i> Instagram</h3>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="insta.hideSuggested" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Hide Suggested Posts</span>
+        </label>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="insta.hideSponsored" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Hide Sponsored</span>
+        </label>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="insta.hideReels">
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Hide Reels</span>
+        </label>
+      </div>
+
+      <div class="settings-section">
+        <h3><i data-lucide="youtube"></i> YouTube</h3>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="youtube.hideShorts">
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Hide Shorts</span>
+        </label>
+        <label class="toggle-switch">
+          <input type="checkbox" data-filter="youtube.hideComments">
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Hide Comments</span>
+        </label>
+      </div>
+
+      <div class="settings-section">
+        <h3><i data-lucide="ban"></i> Block Keywords</h3>
+        <textarea id="blocked-keywords" placeholder="Enter keywords to block, one per line...
+crypto
+nft
+web3
+promoted"></textarea>
+      </div>
+
+      <button class="save-btn" id="save-settings">
+        <i data-lucide="save"></i>
+        SAVE SETTINGS
+      </button>
+    </div>
+  </div>
+
+  <!-- <div id="editor-container" style="height: 400px; border: 1px solid #333; margin-top: 10px;"></div>
+<div class="editor-controls">
+  <button id="save-code">Save File</button>
+  <button id="copy-code">Copy All</button>
+</div> -->
+
+  <!-- AI SIDEBAR (ADDED HERE - BEFORE LOADING OVERLAY) -->
+  <div id="ai-sidebar" class="ai-sidebar">
+    <div class="sidebar-header">
+      <h2><i data-lucide="bot"></i> Local AI Assistant</h2>
+      <button id="close-ai-sidebar" class="sidebar-close">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    
+    <div class="model-selector">
+      <select id="ai-model-select" disabled>
+        <option value="">Loading models...</option>
+      </select>
+      <div class="model-size" id="ai-model-size">No model loaded</div>
+    </div>
+    
+    <!-- <div class="sidebar-header">
+        <h2><i data-lucide="code"></i> Code Editor</h2>
+    </div>
+    
+    <div id="editor-container" style="height: 300px; width: 100%; background: #1e1e1e; border-bottom: 1px solid #333;"></div> -->
+    
+    <script src="scripts/editor-manager.js"></script>
+
+    <div class="chat-container" id="ai-chat-container">
+      <div class="chat-message ai-message">
+        Hello! I'm your local AI assistant running privately on your machine via Llama.cpp. How can I help you today?
+      </div>
+    </div>
+    
+    <div class="chat-input-container">
+      <textarea id="ai-chat-input" placeholder="Ask me anything..." rows="1" disabled></textarea>
+      <button id="ai-send-btn" class="send-btn" disabled>
+        <i data-lucide="send"></i>
+      </button>
+    </div>
+    
+    <div class="sidebar-footer">
+      <div class="status-indicator">
+        <div class="status-dot" id="ai-status-dot"></div>
+        <span id="ai-status-text">Offline</span>
+      </div>
+      <button id="ai-start-btn" class="start-btn">Start AI</button>
+    </div>
+  </div>
+
+  <!-- Loading overlay -->
+  <div class="loading-overlay" id="loading">
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <span>Loading...</span>
+    </div>
+  </div>
+
+  <script src="scripts/sounds.js"></script>
+  <script src="scripts/app.js"></script>
+  <!-- AI SIDEBAR SCRIPT (ADD THIS) -->
+  <script src="scripts/ai-sidebar.js"></script>
+  <script>
+    // Initialize ALL Lucide icons (including AI sidebar)
+    lucide.createIcons();
+  </script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "twitter": {
+    "hideGrok": true,
+    "hidePromoted": true,
+    "hidePremium": true,
+    "hideTrends": true,
+    "hideWhoToFollow": false,
+    "hideAnalytics": true
+  },
+  "instagram": {
+    "hideSuggested": true,
+    "hideReels": false,
+    "hideSponsored": true,
+    "hideThreads": true
+  },
+  "reddit": {
+    "hidePromoted": true,
+    "hideAwards": false,
+    "useOldReddit": true
+  },
+  "youtube": {
+    "hideShorts": false,
+    "hideAds": true,
+    "hideSuggestions": false
+  },
+  "global": {
+    "blockedKeywords": [
+      "crypto",
+      "nft",
+      "web3"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "social-cleaner-browser",
+  "version": "1.0.0",
+  "description": "A focused social media browser that filters the junk",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging"
+  },
+  "dependencies": {
+    "electron": "^28.3.3"
+  }
+}
