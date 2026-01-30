@@ -1,0 +1,2 @@
+# CleanSocial
+Multi Purpose Browser
