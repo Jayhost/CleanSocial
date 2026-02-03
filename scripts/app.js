@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const blockedCountEl = document.getElementById('blocked-count');
   const totalBlockedEl = document.getElementById('total-blocked');
   const adblockIndicator = document.getElementById('adblock-indicator');
+  
+
+
 
   // Clear existing elements
   document.querySelectorAll('.tab:not(.new-tab-btn)').forEach(t => t.remove());
@@ -124,13 +127,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Quick sites
   document.querySelectorAll('.quick-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const url = btn.dataset.url;
-      if (url) {
-        if (window.soundFX) window.soundFX.playNavigate();
-        navigateTo(url);
-      }
-    });
+    if (btn.id === 'ai-tab-btn') {
+      // Special handling for AI button
+      btn.addEventListener('click', () => {
+        if (window.soundFX) window.soundFX.playClick();
+        createAISearchTab();
+      });
+    } else if (btn.id === 'editor-btn') { // 👈 ADD THIS
+      btn.addEventListener('click', () => {
+        if (window.soundFX) window.soundFX.playClick();
+        createEditorTab();
+      });
+    } else if (btn.id === 'terminal-btn') {
+  btn.addEventListener('click', () => {
+    if (window.soundFX) window.soundFX.playClick();
+    createTerminalTab();
+  });
+    } else {
+      // Regular quick site buttons
+      btn.addEventListener('click', () => {
+        const url = btn.dataset.url;
+        if (url) {
+          if (window.soundFX) window.soundFX.playNavigate();
+          navigateTo(url);
+        }
+      });
+    }
   });
 
   // Settings
@@ -190,9 +212,9 @@ document.addEventListener('DOMContentLoaded', () => {
     tab.className = 'tab';
     tab.dataset.tab = id.toString();
     tab.innerHTML = `
-      <span class="tab-icon"><svg data-lucide="globe" width="14" height="14"></svg></span>
+      <span class="tab-icon"><i data-lucide="globe" width="14" height="14"></i></span>
       <span class="tab-title">${title}</span>
-      <span class="tab-close"><svg data-lucide="x" width="14" height="14"></svg></span>
+      <span class="tab-close"><i data-lucide="x" width="14" height="14"></i></span>
     `;
 
     const newTabBtn = document.getElementById('new-tab');
@@ -235,16 +257,29 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     webview.addEventListener('did-navigate', (e) => {
-      if (id === activeTabId) {
-        urlBar.value = e.url;
-        updateSecurityIndicator(e.url);
-      }
-      updateTabIcon(id, getIconForUrl(e.url));
-      try {
-        const hostname = new URL(e.url).hostname.replace('www.', '');
-        updateTabTitle(id, hostname);
-      } catch (err) {}
-    });
+  if (id === activeTabId) {
+    urlBar.value = e.url;
+    updateSecurityIndicator(e.url);
+  }
+  updateTabIcon(id, getIconForUrl(e.url));
+  
+  // Inject filters including Twitch ad blocker
+  injectFilters(webview);
+  
+  try {
+    const hostname = new URL(e.url).hostname.replace('www.', '');
+    updateTabTitle(id, hostname);
+  } catch (err) {}
+});
+
+webview.addEventListener('did-navigate-in-page', (e) => {
+  if (id === activeTabId && e.isMainFrame) {
+    urlBar.value = e.url;
+    updateSecurityIndicator(e.url);
+  }
+  // Also inject on in-page navigation (for SPAs like Twitch)
+  injectFilters(webview);
+});
 
     webview.addEventListener('page-title-updated', (e) => {
       updateTabTitle(id, e.title);
@@ -266,6 +301,119 @@ document.addEventListener('DOMContentLoaded', () => {
 
     return id;
   }
+
+function createTerminalTab() {
+  const id = tabCounter++;
+  
+  // Hide all other views first
+  document.querySelectorAll('.browser-view').forEach(v => v.classList.remove('active'));
+  
+  const container = document.createElement('div');
+  container.id = `webview-${id}`;
+  container.className = 'browser-view active';  // Make sure 'active' is here
+  
+  const terminalHTML = window.TerminalTabHTML?.getTabHTML?.();
+  if (!terminalHTML) {
+    console.error('❌ TerminalTabHTML not loaded!');
+    container.innerHTML = '<div style="color: red; padding: 20px;">Terminal failed to load.</div>';
+  } else {
+    container.innerHTML = terminalHTML;
+  }
+  
+  viewContainer.appendChild(container);
+
+  const tab = document.createElement('button');
+  tab.className = 'tab active';
+  tab.dataset.tab = id.toString();
+  tab.dataset.type = 'terminal';
+  tab.innerHTML = `
+    <span class="tab-icon"><i data-lucide="terminal" width="14" height="14"></i></span>
+    <span class="tab-title">Terminal</span>
+    <span class="tab-close"><i data-lucide="x" width="14" height="14"></i></span>
+  `;
+
+  // Deactivate other tabs
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+
+  tabBar.insertBefore(tab, document.getElementById('new-tab'));
+  if (window.lucide) lucide.createIcons();
+
+  tab.addEventListener('click', (e) => {
+    if (e.target.closest('.tab-close')) {
+      e.stopPropagation();
+      closeTab(id);
+    } else {
+      if (window.soundFX) window.soundFX.playTabSwitch();
+      switchToTab(id);
+    }
+  });
+
+  tabs.push({ id, url: 'terminal', title: 'Terminal', type: 'terminal' });
+  activeTabId = id;
+
+  // Initialize terminal after a short delay
+  setTimeout(() => {
+    if (window.TerminalTab) {
+      const terminalInstance = new window.TerminalTab();
+      terminalInstance.init(container).then(() => {
+        console.log('✅ Terminal initialized');
+      }).catch(e => {
+        console.error('❌ Terminal init failed:', e);
+      });
+      container.terminalInstance = terminalInstance;
+    } else {
+      console.error('❌ TerminalTab class not found!');
+    }
+  }, 100);
+
+  return id;
+}
+
+  function createAISearchTab() {
+    const id = tabCounter++;
+    
+    const container = document.createElement('div');
+    container.id = `webview-${id}`;
+    container.className = 'browser-view';
+    
+    const aiTab = new window.AISearchTab();
+    container.innerHTML = aiTab.getTabHTML();
+    viewContainer.appendChild(container);
+  
+    const tab = document.createElement('button');
+    tab.className = 'tab';
+    tab.dataset.tab = id.toString();
+    tab.dataset.type = 'ai';
+    tab.innerHTML = `
+      <span class="tab-icon"><i data-lucide="bot" width="14" height="14"></i></span>
+      <span class="tab-title">AI Assistant</span>
+      <span class="tab-close"><i data-lucide="x" width="14" height="14"></i></span>
+    `;
+  
+    tabBar.insertBefore(tab, document.getElementById('new-tab'));
+    if (window.lucide) lucide.createIcons();
+  
+    tab.addEventListener('click', (e) => {
+      if (e.target.closest('.tab-close')) {
+        e.stopPropagation();
+        closeTab(id);
+      } else {
+        if (window.soundFX) window.soundFX.playTabSwitch();
+        switchToTab(id);
+      }
+    });
+  
+    tabs.push({ id, url: 'ai', title: 'AI Assistant', type: 'ai' });
+    switchToTab(id);
+  
+    setTimeout(() => {
+      aiTab.init(container);
+    }, 100);
+  
+    return id;
+  }
+  
+  window.createBrowserTab = createTab;
 
   function getIconForUrl(url) {
     try {
@@ -371,6 +519,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let url = input.trim();
     if (!url) return;
 
+    // Check for AI command
+    if (url.toLowerCase() === 'ai' || url.toLowerCase() === '/ai') {
+      createAISearchTab();
+      return;
+    }
+
     if (!url.match(/^https?:\/\//i)) {
       if (url.match(/^[\w-]+(\.[\w-]+)+/) && !url.includes(' ')) {
         url = 'https://' + url;
@@ -392,26 +546,132 @@ document.addEventListener('DOMContentLoaded', () => {
     return document.getElementById(`webview-${activeTabId}`);
   }
 
-  function injectFilters(webview) {
-    if (!webview) return;
-    
-    const settings = JSON.parse(localStorage.getItem('cleanSocialSettings') || '{}');
-    const keywords = settings.blockedKeywords || [];
-    
-    const css = generateFilterCSS(settings);
-    const js = generateFilterJS(settings, keywords);
+function injectFilters(webview) {
+  if (!webview) return;
+  
+  const settings = JSON.parse(localStorage.getItem('cleanSocialSettings') || '{}');
+  const keywords = settings.blockedKeywords || [];
+  
+  const css = generateFilterCSS(settings);
+  const js = generateFilterJS(settings, keywords);
 
-    webview.insertCSS(css).catch(() => {});
-    webview.executeJavaScript(js).catch(() => {});
-  }
+  webview.insertCSS(css).catch(() => {});
+  webview.executeJavaScript(js).catch(() => {});
+  
+  // Inject Twitch ad blocker for Twitch pages
+  try {
+    const url = webview.getURL();
+    if (url && url.includes('twitch.tv')) {
+      injectTwitchAdBlock(webview);
+    }
+  } catch {}
+}
+
+function injectTwitchAdBlock(webview) {
+  const twitchScript = getTwitchAdBlockScript();
+  webview.executeJavaScript(twitchScript).catch((err) => {
+    console.log('Twitch adblock injection failed:', err);
+  });
+}
+
+function getTwitchAdBlockScript() {
+  return '(function() {' +
+    'if (!/(\\.|\\/)twitch\\.tv/.test(document.location.hostname)) return;' +
+    'if (window.__twitchAdBlockLoaded) return;' +
+    'window.__twitchAdBlockLoaded = true;' +
+    'console.log("🎮 Twitch Ad Blocker loading...");' +
+    
+    'var realFetch = window.fetch;' +
+    'window.fetch = function(url, options) {' +
+      'if (typeof url === "string") {' +
+        'if (url.indexOf("/api/ads") !== -1 || ' +
+            'url.indexOf("imasdk.googleapis.com") !== -1 || ' +
+            'url.indexOf("amazon-adsystem") !== -1 || ' +
+            'url.indexOf("doubleclick.net") !== -1) {' +
+          'console.log("🚫 Blocked ad request:", url);' +
+          'return Promise.resolve(new Response("", { status: 204 }));' +
+        '}' +
+        'if (url.indexOf(".m3u8") !== -1) {' +
+          'return realFetch.apply(this, arguments).then(function(response) {' +
+            'if (response.status === 200) {' +
+              'return response.text().then(function(text) {' +
+                'var lines = text.split("\\n");' +
+                'var cleaned = [];' +
+                'for (var i = 0; i < lines.length; i++) {' +
+                  'if (lines[i].indexOf("stitched-ad") === -1 && lines[i].indexOf("X-TV-TWITCH-AD") === -1) {' +
+                    'cleaned.push(lines[i]);' +
+                  '}' +
+                '}' +
+                'return new Response(cleaned.join("\\n"), { status: response.status, headers: response.headers });' +
+              '});' +
+            '}' +
+            'return response;' +
+          '});' +
+        '}' +
+      '}' +
+      'return realFetch.apply(this, arguments);' +
+    '};' +
+    
+    'var realXHROpen = XMLHttpRequest.prototype.open;' +
+    'XMLHttpRequest.prototype.open = function(method, url) {' +
+      'if (typeof url === "string") {' +
+        'if (url.indexOf("/api/ads") !== -1 || url.indexOf("imasdk.googleapis.com") !== -1 || url.indexOf("amazon-adsystem") !== -1) {' +
+          'console.log("🚫 Blocked XHR ad request:", url);' +
+          'return;' +
+        '}' +
+      '}' +
+      'return realXHROpen.apply(this, arguments);' +
+    '};' +
+    
+    'var style = document.createElement("style");' +
+    'style.textContent = "' +
+      '[data-a-target=video-ad-label],' +
+      '[data-a-target=video-ad-countdown],' +
+      '.video-ad-overlay,' +
+      '.ads-manager,' +
+      '[class*=ad-banner],' +
+      '[class*=ad-overlay],' +
+      '.player-ad-overlay {' +
+        'display: none !important;' +
+        'visibility: hidden !important;' +
+      '}";' +
+    'document.head.appendChild(style);' +
+    
+    'var observer = new MutationObserver(function(mutations) {' +
+      'var adElements = document.querySelectorAll("[data-a-target*=ad], [class*=ad-banner], [class*=ad-overlay]");' +
+      'for (var i = 0; i < adElements.length; i++) {' +
+        'adElements[i].style.display = "none";' +
+      '}' +
+    '});' +
+    'if (document.body) {' +
+      'observer.observe(document.body, { childList: true, subtree: true });' +
+    '}' +
+    
+    'console.log("🎮 Twitch Ad Blocker active");' +
+  '})();';
+}
 
   function generateFilterCSS(settings) {
     let css = `
-      [aria-label="Grok"], [data-testid="grok"], a[href*="/i/grok"],
-      [data-testid="GrokDrawer"], button[aria-label*="Grok"], div[aria-label*="Grok"] { 
-        display: none !important; 
-      }
-    `;
+    /* Grok/AI buttons */
+    [aria-label="Grok"], [data-testid="grok"], a[href*="/i/grok"],
+    [data-testid="GrokDrawer"], button[aria-label*="Grok"], div[aria-label*="Grok"] { 
+      display: none !important; 
+    }
+    
+    /* Twitch ads */
+    [data-a-target="video-ad-label"],
+    [data-a-target="video-ad-countdown"],
+    .video-ad-overlay,
+    .ads-manager,
+    [class*="ad-banner"],
+    [class*="ad-overlay"],
+    .player-ad-overlay,
+    .tw-absolute[style*="z-index: 2000"] {
+      display: none !important;
+      visibility: hidden !important;
+    }
+  `;
 
     if (settings['twitter.hideGrok'] !== false) {
       css += `[aria-label*="Grok" i], button[aria-label*="grok" i], a[href*="grok"] { display: none !important; }`;
@@ -585,7 +845,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Re-inject filters into all webviews
     document.querySelectorAll('.browser-view').forEach(wv => {
-      injectFilters(wv);
+      if (wv.tagName === 'WEBVIEW') {
+        injectFilters(wv);
+      }
     });
 
     settingsPanel.classList.remove('open');
@@ -603,6 +865,74 @@ document.addEventListener('DOMContentLoaded', () => {
       if (window.lucide) lucide.createIcons();
     }, 1500);
   }
+
+  function createEditorTab() {
+    const id = tabCounter++;
+    
+    // Create container (same pattern as createAISearchTab)
+    const container = document.createElement('div');
+    container.id = `webview-${id}`;
+    container.className = 'browser-view';
+    
+    // Get editor HTML
+    const editorHTML = window.EditorTabHTML?.getTabHTML?.();
+    if (!editorHTML) {
+      console.error('❌ EditorTabHTML not loaded!');
+      container.innerHTML = '<div style="color: red; padding: 20px;">Editor failed to load. Check console.</div>';
+    } else {
+      container.innerHTML = editorHTML;
+    }
+    
+    viewContainer.appendChild(container);
+  
+    // Create tab button (same pattern as createTab)
+    const tab = document.createElement('button');
+    tab.className = 'tab';
+    tab.dataset.tab = id.toString();
+    tab.dataset.type = 'editor';
+    tab.innerHTML = `
+      <span class="tab-icon"><i data-lucide="code-2" width="14" height="14"></i></span>
+      <span class="tab-title">Editor</span>
+      <span class="tab-close"><i data-lucide="x" width="14" height="14"></i></span>
+    `;
+  
+    tabBar.insertBefore(tab, document.getElementById('new-tab'));
+    if (window.lucide) lucide.createIcons();
+  
+    // Tab click events
+    tab.addEventListener('click', (e) => {
+      if (e.target.closest('.tab-close')) {
+        e.stopPropagation();
+        closeTab(id);
+      } else {
+        if (window.soundFX) window.soundFX.playTabSwitch();
+        switchToTab(id);
+      }
+    });
+  
+    // Add to tabs array
+    tabs.push({ id, url: 'editor', title: 'Editor', type: 'editor' });
+    switchToTab(id);
+  
+    // Initialize editor AFTER switching to tab (so container is visible)
+    setTimeout(() => {
+      if (window.EditorTab) {
+        const editorInstance = new window.EditorTab();
+        editorInstance.init(container).then(() => {
+          console.log('✅ Editor initialized');
+        }).catch(e => {
+          console.error('❌ Editor init failed:', e);
+          container.innerHTML = `<div style="color: red; padding: 20px;">Editor init failed: ${e.message}</div>`;
+        });
+        container.editorInstance = editorInstance;
+      } else {
+        console.error('❌ EditorTab class not found!');
+      }
+    }, 100);
+  
+    return id;
+  }
+
 
   function loadSettings() {
     try {

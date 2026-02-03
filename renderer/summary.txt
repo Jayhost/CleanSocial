@@ -1,0 +1,1580 @@
+Project Summary: Clean Social Browser
+📁 Project Structure
+
+text
+
+clean-social-browser/
+├── main.js                      # Electron main process
+├── index.html                   # Main HTML page
+├── package.json                 # Node dependencies
+│
+├── src/
+│   ├── llamaServer.js           # Local LLM server manager
+│   ├── browserSearch.js         # Web search & scraping
+│   ├── codeReviser.js           # AI code bug detection
+│   └── adBlocker.js             # Ad/tracker blocking
+│
+├── preload/
+│   └── preload.js               # Secure IPC bridge
+│
+├── scripts/
+│   ├── app.js                   # Main browser UI controller
+│   └── sounds.js                # Sound effects
+│
+├── renderer/
+│   ├── ai-utils.js              # AI helper functions
+│   ├── ai-tab-html.js           # AI tab HTML template
+│   ├── ai-tab-css.js            # AI tab styles
+│   ├── ai-search-tab.js         # AI assistant logic
+│   ├── ai-code-panel.js         # Code display & diffs
+│   ├── editor-tab-html.js       # Editor HTML template (NEW)
+│   ├── editor-tab-css.js        # Editor styles (NEW)
+│   └── editor-tab.js            # Code editor logic (NEW)
+│
+├── styles/
+│   └── app.css                  # Main stylesheet
+│
+└── llama/
+    └── bin/
+        ├── win32/llama-server.exe
+        ├── darwin/llama-server
+        └── linux/llama-server
+
+📄 File-by-File Summary
+main.js - Electron Main Process
+
+Purpose: Controls the entire app, creates windows, handles all IPC communication.
+
+JavaScript
+
+const { app, BrowserWindow, ipcMain, dialog, session } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const LlamaServer = require('./src/llamaServer');
+const AdBlocker = require('./src/adBlocker');
+const { search, fetchPreviewImages, fetchPageContent } = require('./src/browserSearch');
+const { reviseCode } = require('./src/codeReviser');
+
+let mainWindow;
+const llamaServer = new LlamaServer(8080);
+const adBlocker = new AdBlocker();
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    frame: false,  // Custom titlebar
+    webPreferences: {
+      preload: path.join(__dirname, 'preload', 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      webviewTag: true
+    }
+  });
+
+  mainWindow.loadFile('index.html');
+
+  // Ad blocking via request interception
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    if (adBlocker.isEnabled && adBlocker.shouldBlock(details.url)) {
+      callback({ cancel: true });
+    } else {
+      callback({});
+    }
+  });
+
+  // Remove security headers to allow embedding sites
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [''],
+        'X-Frame-Options': ['']
+      }
+    });
+  });
+}
+
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', async () => {
+  await llamaServer.stop();
+  if (process.platform !== 'darwin') app.quit();
+});
+
+// ============ WINDOW CONTROLS ============
+ipcMain.on('window-minimize', () => mainWindow.minimize());
+ipcMain.on('window-maximize', () => {
+  mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
+});
+ipcMain.on('window-close', () => mainWindow.close());
+
+// ============ AD BLOCKER ============
+ipcMain.handle('adblock-get-count', () => adBlocker.blockedCount);
+ipcMain.handle('adblock-set-enabled', (e, enabled) => { adBlocker.isEnabled = enabled; });
+ipcMain.handle('adblock-is-enabled', () => adBlocker.isEnabled);
+
+// ============ LLAMA SERVER ============
+ipcMain.handle('llama-check-binary', () => llamaServer.checkBinaryExists());
+
+ipcMain.handle('llama-get-models', async () => {
+  const modelsDir = path.join(__dirname, 'models');
+  try {
+    const files = fs.readdirSync(modelsDir);
+    return files
+      .filter(f => f.endsWith('.gguf'))
+      .map(f => ({ name: f, path: path.join(modelsDir, f) }));
+  } catch {
+    return [];
+  }
+});
+
+ipcMain.handle('llama-start', async (e, modelPath, options) => {
+  await llamaServer.start(modelPath, options);
+});
+
+ipcMain.handle('llama-stop', async () => {
+  await llamaServer.stop();
+});
+
+ipcMain.handle('llama-get-status', () => llamaServer.getStatus());
+
+ipcMain.handle('llama-generate', async (e, prompt, options) => {
+  return llamaServer.generate(prompt, options);
+});
+
+ipcMain.handle('llama-chat', async (e, messages, options) => {
+  return llamaServer.chat(messages, options);
+});
+
+// Streaming chat handler
+ipcMain.handle('llama-stream-chat', async (event, messages, options) => {
+  const channelId = `llama-stream-${Date.now()}`;
+  
+  const stream = llamaServer.streamChat(messages, options);
+  
+  stream.on('chunk', (content) => {
+    event.sender.send(channelId, { type: 'chunk', content });
+  });
+  
+  stream.on('done', () => {
+    event.sender.send(channelId, { type: 'done' });
+  });
+  
+  stream.on('error', (err) => {
+    event.sender.send(channelId, { type: 'error', error: err.message });
+  });
+  
+  return channelId;
+});
+
+// ============ BROWSER SEARCH ============
+ipcMain.handle('browser-search', async (e, query, options) => {
+  const results = await search(query, options);
+  if (options?.fetchImages) {
+    await fetchPreviewImages(results);
+  }
+  return results;
+});
+
+ipcMain.handle('browser-fetch-content', async (e, url) => {
+  return fetchPageContent(url);
+});
+
+// ============ CODE REVISION ============
+ipcMain.handle('code-revise', async (e, code, query) => {
+  return reviseCode(code, query, llamaServer);
+});
+
+// ============ FILE OPERATIONS ============
+ipcMain.handle('open-file', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [
+      { name: 'Code Files', extensions: ['js', 'ts', 'py', 'html', 'css', 'json', 'md', 'txt', 'jsx', 'tsx', 'vue', 'svelte', 'rs', 'go', 'java', 'cpp', 'c', 'h'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+
+  if (result.canceled || !result.filePaths[0]) return null;
+
+  const filePath = result.filePaths[0];
+  const content = fs.readFileSync(filePath, 'utf-8');
+  
+  return {
+    path: filePath,
+    name: path.basename(filePath),
+    content
+  };
+});
+
+ipcMain.handle('save-file', async (event, { path: filePath, name, content }) => {
+  let savePath = filePath;
+
+  if (!savePath) {
+    const result = await dialog.showSaveDialog({
+      defaultPath: name || 'untitled.txt',
+      filters: [{ name: 'All Files', extensions: ['*'] }]
+    });
+
+    if (result.canceled || !result.filePath) return null;
+    savePath = result.filePath;
+  }
+
+  fs.writeFileSync(savePath, content, 'utf-8');
+  
+  return {
+    path: savePath,
+    name: path.basename(savePath)
+  };
+});
+
+ipcMain.handle('read-file', async (event, filePath) => {
+  return fs.readFileSync(filePath, 'utf-8');
+});
+
+ipcMain.handle('open-folder', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory']
+  });
+
+  if (result.canceled || !result.filePaths[0]) return null;
+
+  const folderPath = result.filePaths[0];
+  
+  function readDir(dirPath, depth = 0) {
+    if (depth > 5) return []; // Limit depth
+    
+    try {
+      const items = fs.readdirSync(dirPath, { withFileTypes: true });
+      return items
+        .filter(item => !item.name.startsWith('.') && item.name !== 'node_modules')
+        .map(item => {
+          const itemPath = path.join(dirPath, item.name);
+          if (item.isDirectory()) {
+            return {
+              type: 'folder',
+              name: item.name,
+              path: itemPath,
+              children: readDir(itemPath, depth + 1)
+            };
+          }
+          return {
+            type: 'file',
+            name: item.name,
+            path: itemPath
+          };
+        })
+        .sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+    } catch {
+      return [];
+    }
+  }
+
+  return {
+    path: folderPath,
+    name: path.basename(folderPath),
+    children: readDir(folderPath)
+  };
+});
+
+ipcMain.handle('save-editor-file', async (e, content) => {
+  const result = await dialog.showSaveDialog({
+    filters: [{ name: 'All Files', extensions: ['*'] }]
+  });
+  if (result.canceled) return null;
+  fs.writeFileSync(result.filePath, content, 'utf-8');
+  return result.filePath;
+});
+
+preload/preload.js - Secure IPC Bridge
+
+Purpose: Exposes safe APIs from main process to renderer.
+
+JavaScript
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Window controls
+  windowMinimize: () => ipcRenderer.send('window-minimize'),
+  windowMaximize: () => ipcRenderer.send('window-maximize'),
+  windowClose: () => ipcRenderer.send('window-close'),
+
+  // AdBlock
+  adblockGetCount: () => ipcRenderer.invoke('adblock-get-count'),
+  adblockSetEnabled: (enabled) => ipcRenderer.invoke('adblock-set-enabled', enabled),
+  adblockIsEnabled: () => ipcRenderer.invoke('adblock-is-enabled'),
+
+  // Llama
+  llamaCheckBinary: () => ipcRenderer.invoke('llama-check-binary'),
+  llamaStart: (modelPath, options) => ipcRenderer.invoke('llama-start', modelPath, options),
+  llamaStop: () => ipcRenderer.invoke('llama-stop'),
+  llamaGenerate: (prompt, options) => ipcRenderer.invoke('llama-generate', prompt, options),
+  llamaChat: (messages, options) => ipcRenderer.invoke('llama-chat', messages, options),
+  llamaGetStatus: () => ipcRenderer.invoke('llama-get-status'),
+  llamaGetModels: () => ipcRenderer.invoke('llama-get-models'),
+  llamaStreamChat: (messages, options) => ipcRenderer.invoke('llama-stream-chat', messages, options),
+  onLlamaStream: (channel, callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
+  },
+
+  // Code revision
+  codeRevise: (code, query) => ipcRenderer.invoke('code-revise', code, query),
+
+  // Browser search
+  browserSearch: (query, options) => ipcRenderer.invoke('browser-search', query, options),
+  browserFetchContent: (url) => ipcRenderer.invoke('browser-fetch-content', url),
+
+  // File operations
+  openFile: () => ipcRenderer.invoke('open-file'),
+  saveFile: (data) => ipcRenderer.invoke('save-file', data),
+  readFile: (path) => ipcRenderer.invoke('read-file', path),
+  openFolder: () => ipcRenderer.invoke('open-folder'),
+  saveEditorFile: (content) => ipcRenderer.invoke('save-editor-file', content)
+});
+
+src/llamaServer.js - LLM Server Manager
+
+Purpose: Spawns and manages the llama.cpp server, provides chat/generate/stream APIs.
+
+JavaScript
+
+const { EventEmitter } = require('events');
+const { spawn, execFile } = require('child_process');
+const http = require('http');
+const path = require('path');
+const fs = require('fs');
+
+class LlamaServer extends EventEmitter {
+  constructor(port = 8080) {
+    super();
+    this.process = null;
+    this.port = port;
+    this.isRunning = false;
+    this.currentModel = null;
+  }
+
+  getBinaryPath() {
+    const platform = process.platform;
+    const binaryName = platform === 'win32' ? 'llama-server.exe' : 'llama-server';
+    return path.join(__dirname, '..', 'llama', 'bin', platform, binaryName);
+  }
+
+  async checkBinaryExists() {
+    try {
+      await fs.promises.access(this.getBinaryPath(), fs.constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async start(modelPath, options = {}) {
+    if (this.isRunning) return;
+
+    const binaryPath = this.getBinaryPath();
+    const args = [
+      '-m', path.resolve(modelPath),
+      '--port', this.port.toString(),
+      '--host', '127.0.0.1',
+      '-ngl', (options.ngl ?? 99).toString(),
+      '-c', (options.ctxSize || 8192).toString(),
+      '--batch-size', (options.batchSize || 256).toString(),
+      '--ubatch-size', (options.ubatchSize || 256).toString()
+    ];
+
+    // Tensor offload for hybrid GPU/CPU mode
+    if (options.tensorOffload) {
+      args.push('-ot', options.tensorOffload);
+    }
+
+    console.log(`🚀 Starting server: ngl=${options.ngl}, ctx=${options.ctxSize}`);
+
+    this.process = spawn(binaryPath, args, {
+      cwd: path.dirname(binaryPath)
+    });
+
+    this.currentModel = modelPath;
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.healthCheck().then(ok => ok ? resolve() : reject(new Error('Timeout')));
+      }, 180000);
+
+      const handleLog = (data) => {
+        const log = data.toString();
+        console.log('[llama]:', log.trim());
+        if (log.includes('HTTP server listening') || log.includes('starting the main loop')) {
+          clearTimeout(timeout);
+          this.isRunning = true;
+          resolve();
+        }
+      };
+
+      this.process.stdout.on('data', handleLog);
+      this.process.stderr.on('data', handleLog);
+      this.process.on('error', (e) => { clearTimeout(timeout); reject(e); });
+      this.process.on('close', () => { this.isRunning = false; this.currentModel = null; });
+    });
+  }
+
+  async stop() {
+    if (!this.isRunning || !this.process) return;
+    return new Promise((resolve) => {
+      this.process.once('close', () => {
+        this.isRunning = false;
+        resolve();
+      });
+      if (process.platform === 'win32') {
+        execFile('taskkill', ['/PID', this.process.pid.toString(), '/T', '/F']);
+      } else {
+        this.process.kill('SIGTERM');
+      }
+    });
+  }
+
+  async healthCheck() {
+    return new Promise((resolve) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: this.port,
+        path: '/health',
+        timeout: 5000
+      }, (res) => resolve(res.statusCode === 200));
+      req.on('error', () => resolve(false));
+      req.end();
+    });
+  }
+
+  async chat(messages, options = {}) {
+    if (!this.isRunning) throw new Error('Server not running');
+
+    const body = JSON.stringify({
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.max_tokens ?? 2048,
+      stream: false
+    });
+
+    return new Promise((resolve, reject) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: this.port,
+        path: '/v1/chat/completions',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 300000
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            json.error ? reject(new Error(json.error.message)) : resolve(json);
+          } catch (e) {
+            reject(new Error('Invalid JSON'));
+          }
+        });
+      });
+      req.on('error', reject);
+      req.write(body);
+      req.end();
+    });
+  }
+
+  streamChat(messages, options = {}) {
+    const emitter = new EventEmitter();
+    if (!this.isRunning) {
+      setTimeout(() => emitter.emit('error', new Error('Server not running')), 0);
+      return emitter;
+    }
+
+    const body = JSON.stringify({
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.max_tokens ?? 2048,
+      stream: true
+    });
+
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: this.port,
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }, (res) => {
+      let buffer = '';
+      res.on('data', (chunk) => {
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed === 'data: [DONE]') { emitter.emit('done'); return; }
+          if (trimmed.startsWith('data: ')) {
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const content = json.choices?.[0]?.delta?.content;
+              if (content) emitter.emit('chunk', content);
+            } catch {}
+          }
+        }
+      });
+      res.on('end', () => emitter.emit('done'));
+    });
+
+    req.on('error', (err) => emitter.emit('error', err));
+    req.write(body);
+    req.end();
+    return emitter;
+  }
+
+  async generate(prompt, options = {}) {
+    // Raw completion endpoint (non-chat)
+    // Similar to chat() but uses /completion endpoint
+  }
+
+  getStatus() {
+    return { isRunning: this.isRunning, port: this.port, currentModel: this.currentModel };
+  }
+}
+
+module.exports = LlamaServer;
+
+src/adBlocker.js - Ad Blocking
+
+Purpose: Blocks ads and trackers by URL pattern matching.
+
+JavaScript
+
+class AdBlocker {
+  constructor() {
+    this.isEnabled = true;
+    this.blockedCount = 0;
+    this.patterns = [
+      /doubleclick\.net/,
+      /googlesyndication\.com/,
+      /googleadservices\.com/,
+      /facebook\.com\/tr/,
+      /analytics\.google\.com/,
+      /adservice\.google/,
+      /pagead2\.googlesyndication/,
+      /amazon-adsystem\.com/,
+      /ads\.yahoo\.com/,
+      /advertising\.com/,
+      /adnxs\.com/,
+      /taboola\.com/,
+      /outbrain\.com/,
+      /criteo\.com/,
+      /tracking\./,
+      /tracker\./,
+      /\.ads\./,
+      /\/ads\//,
+      /beacon\./,
+      /pixel\./
+    ];
+  }
+
+  shouldBlock(url) {
+    if (!this.isEnabled) return false;
+    const blocked = this.patterns.some(p => p.test(url));
+    if (blocked) this.blockedCount++;
+    return blocked;
+  }
+}
+
+module.exports = AdBlocker;
+
+src/browserSearch.js - Web Search & Scraping
+
+Purpose: Searches DuckDuckGo, fetches preview images, scrapes page content.
+
+JavaScript
+
+const { BrowserWindow } = require('electron');
+
+async function search(query, options = {}) {
+  // Creates hidden BrowserWindow, navigates to DuckDuckGo
+  // Scrapes search results
+  // Returns array of { title, url, snippet }
+}
+
+async function fetchPreviewImages(results) {
+  // For each result, fetches the page
+  // Extracts Open Graph / Twitter card images
+  // Adds imageUrl to each result
+}
+
+async function fetchPageContent(url) {
+  // Fetches URL, extracts code blocks and main text
+  // Returns { code: [], text: '' }
+}
+
+async function fetchGitHubRaw(url) {
+  // Converts GitHub URL to raw URL and fetches content
+}
+
+module.exports = { search, fetchPreviewImages, fetchPageContent, fetchGitHubRaw };
+
+src/codeReviser.js - AI Code Bug Detection
+
+Purpose: Searches for reference implementations, compares with LLM, generates diffs.
+
+JavaScript
+
+const { execSync } = require('child_process');
+const { search, fetchPageContent } = require('./browserSearch');
+
+async function reviseCode(code, query, llamaServer) {
+  // 1. Search web for reference implementations
+  const results = await search(`${query} example code`);
+  
+  // 2. Fetch code from top results
+  const references = await fetchPageContent(results[0].url);
+  
+  // 3. Send to LLM for comparison
+  const messages = [
+    { role: 'system', content: 'Compare this code with the reference. Find bugs and suggest fixes.' },
+    { role: 'user', content: `Original:\n${code}\n\nReference:\n${references.code}` }
+  ];
+  
+  const response = await llamaServer.chat(messages);
+  const fixedCode = extractCode(response);
+  
+  // 4. Generate diff
+  const diff = generateDiff(code, fixedCode);
+  
+  return {
+    changed: diff.length > 0,
+    message: 'Found potential improvements',
+    diff: diff,
+    fixedCode: fixedCode
+  };
+}
+
+function generateDiff(original, fixed) {
+  // Uses Unix diff or custom diffing
+}
+
+module.exports = { reviseCode };
+
+index.html - Main HTML Page
+
+Purpose: App structure with custom titlebar, nav, tabs, settings.
+
+HTML
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com;">
+  <title>Clean Social Browser</title>
+  <link rel="stylesheet" href="styles/app.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <!-- Custom Titlebar -->
+  <div class="titlebar">
+    <div class="titlebar-drag">
+      <span class="app-title">Clean Social Browser</span>
+    </div>
+    <div class="window-controls">
+      <button id="minimize-btn"><i data-lucide="minus" width="16" height="16"></i></button>
+      <button id="maximize-btn"><i data-lucide="square" width="14" height="14"></i></button>
+      <button id="close-btn" class="close"><i data-lucide="x" width="16" height="16"></i></button>
+    </div>
+  </div>
+
+  <!-- Navigation Bar -->
+  <div class="navbar">
+    <div class="nav-buttons">
+      <button id="back-btn"><i data-lucide="arrow-left" width="18" height="18"></i></button>
+      <button id="forward-btn"><i data-lucide="arrow-right" width="18" height="18"></i></button>
+      <button id="refresh-btn"><i data-lucide="rotate-cw" width="18" height="18"></i></button>
+    </div>
+    
+    <input type="text" id="url-bar" placeholder="Search or enter URL...">
+    
+    <div class="nav-actions">
+      <button id="ai-btn" class="nav-btn" title="AI Assistant">
+        <i data-lucide="bot" width="18" height="18"></i>
+      </button>
+      <button id="editor-btn" class="nav-btn" title="Code Editor">
+        <i data-lucide="code-2" width="18" height="18"></i>
+      </button>
+      <button id="settings-btn" class="nav-btn" title="Settings">
+        <i data-lucide="settings" width="18" height="18"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Quick Access Buttons -->
+  <div class="quick-access">
+    <button class="quick-btn" data-url="https://youtube.com">YouTube</button>
+    <button class="quick-btn" data-url="https://twitter.com">Twitter</button>
+    <button class="quick-btn" data-url="https://reddit.com">Reddit</button>
+    <button class="quick-btn" data-url="https://github.com">GitHub</button>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar" id="tab-bar"></div>
+
+  <!-- Content Area -->
+  <div class="content-area" id="content-area"></div>
+
+  <!-- Settings Panel -->
+  <div class="settings-panel" id="settings-panel">
+    <h3>Settings</h3>
+    <label>
+      <input type="checkbox" id="adblock-toggle" checked>
+      Enable Ad Blocking
+    </label>
+    <label>
+      <input type="checkbox" id="sounds-toggle" checked>
+      Enable Sounds
+    </label>
+    <div class="adblock-counter">
+      Blocked: <span id="blocked-count">0</span>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="renderer/ai-utils.js"></script>
+  <script src="renderer/ai-tab-html.js"></script>
+  <script src="renderer/ai-tab-css.js"></script>
+  <script src="renderer/ai-code-panel.js"></script>
+  <script src="renderer/ai-search-tab.js"></script>
+  <script src="renderer/editor-tab-html.js"></script>
+  <script src="renderer/editor-tab-css.js"></script>
+  <script src="renderer/editor-tab.js"></script>
+  <script src="scripts/sounds.js"></script>
+  <script src="scripts/app.js"></script>
+</body>
+</html>
+
+scripts/app.js - Main Browser UI Controller
+
+Purpose: Tab management, navigation, settings, creates AI/Editor tabs.
+
+JavaScript
+
+(function() {
+  'use strict';
+
+  let tabs = new Map();
+  let activeTabId = null;
+
+  // ============ INITIALIZATION ============
+  document.addEventListener('DOMContentLoaded', () => {
+    initWindowControls();
+    initNavigation();
+    initQuickAccess();
+    initSettings();
+    initTabButtons();
+    
+    // Create initial tab
+    createBrowserTab('https://duckduckgo.com');
+    
+    if (window.lucide) lucide.createIcons();
+  });
+
+  // ============ WINDOW CONTROLS ============
+  function initWindowControls() {
+    document.getElementById('minimize-btn')?.addEventListener('click', () => {
+      window.electronAPI?.windowMinimize();
+    });
+    document.getElementById('maximize-btn')?.addEventListener('click', () => {
+      window.electronAPI?.windowMaximize();
+    });
+    document.getElementById('close-btn')?.addEventListener('click', () => {
+      window.electronAPI?.windowClose();
+    });
+  }
+
+  // ============ NAVIGATION ============
+  function initNavigation() {
+    const urlBar = document.getElementById('url-bar');
+    
+    urlBar?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        navigateTo(urlBar.value);
+      }
+    });
+
+    document.getElementById('back-btn')?.addEventListener('click', () => {
+      getCurrentWebview()?.goBack();
+    });
+    
+    document.getElementById('forward-btn')?.addEventListener('click', () => {
+      getCurrentWebview()?.goForward();
+    });
+    
+    document.getElementById('refresh-btn')?.addEventListener('click', () => {
+      getCurrentWebview()?.reload();
+    });
+  }
+
+  function navigateTo(input) {
+    let url = input.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      if (url.includes('.') && !url.includes(' ')) {
+        url = 'https://' + url;
+      } else {
+        url = `https://duckduckgo.com/?q=${encodeURIComponent(url)}`;
+      }
+    }
+    getCurrentWebview()?.loadURL(url);
+  }
+
+  function getCurrentWebview() {
+    const content = document.querySelector(`.tab-content.active webview`);
+    return content;
+  }
+
+  // ============ QUICK ACCESS ============
+  function initQuickAccess() {
+    document.querySelectorAll('.quick-btn[data-url]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const url = btn.dataset.url;
+        createBrowserTab(url);
+      });
+    });
+  }
+
+  // ============ SETTINGS ============
+  function initSettings() {
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsPanel = document.getElementById('settings-panel');
+    
+    settingsBtn?.addEventListener('click', () => {
+      settingsPanel?.classList.toggle('visible');
+    });
+
+    document.getElementById('adblock-toggle')?.addEventListener('change', (e) => {
+      window.electronAPI?.adblockSetEnabled(e.target.checked);
+    });
+
+    // Update blocked count periodically
+    setInterval(async () => {
+      const count = await window.electronAPI?.adblockGetCount();
+      const el = document.getElementById('blocked-count');
+      if (el) el.textContent = count || 0;
+    }, 2000);
+  }
+
+  // ============ TAB BUTTONS (AI & Editor) ============
+  function initTabButtons() {
+    document.getElementById('ai-btn')?.addEventListener('click', () => {
+      createAITab();
+    });
+
+    document.getElementById('editor-btn')?.addEventListener('click', () => {
+      createEditorTab();
+    });
+  }
+
+  // ============ TAB MANAGEMENT ============
+  function createBrowserTab(url) {
+    const tabId = `browser-${Date.now()}`;
+    
+    deactivateAllTabs();
+    
+    // Create tab button
+    const tab = document.createElement('div');
+    tab.className = 'tab active';
+    tab.dataset.tabId = tabId;
+    tab.innerHTML = `
+      <i data-lucide="globe" width="14" height="14"></i>
+      <span class="tab-title">Loading...</span>
+      <span class="tab-close" data-tab-id="${tabId}">×</span>
+    `;
+    document.getElementById('tab-bar').appendChild(tab);
+    
+    // Create content with webview
+    const content = document.createElement('div');
+    content.className = 'tab-content active';
+    content.dataset.tabId = tabId;
+    content.innerHTML = `<webview src="${url}" class="browser-view"></webview>`;
+    document.getElementById('content-area').appendChild(content);
+    
+    // Webview events
+    const webview = content.querySelector('webview');
+    webview.addEventListener('did-finish-load', () => {
+      tab.querySelector('.tab-title').textContent = webview.getTitle() || 'New Tab';
+      document.getElementById('url-bar').value = webview.getURL();
+    });
+    
+    webview.addEventListener('page-title-updated', (e) => {
+      tab.querySelector('.tab-title').textContent = e.title;
+    });
+
+    // Tab events
+    tab.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('tab-close')) {
+        switchToTab(tabId);
+      }
+    });
+    
+    tab.querySelector('.tab-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(tabId);
+    });
+
+    tabs.set(tabId, { type: 'browser', url });
+    activeTabId = tabId;
+    
+    if (window.lucide) lucide.createIcons();
+    return tabId;
+  }
+
+  function createAITab() {
+    const tabId = `ai-${Date.now()}`;
+    
+    deactivateAllTabs();
+    
+    const tab = document.createElement('div');
+    tab.className = 'tab active';
+    tab.dataset.tabId = tabId;
+    tab.innerHTML = `
+      <i data-lucide="bot" width="14" height="14"></i>
+      <span class="tab-title">AI Assistant</span>
+      <span class="tab-close" data-tab-id="${tabId}">×</span>
+    `;
+    document.getElementById('tab-bar').appendChild(tab);
+    
+    const content = document.createElement('div');
+    content.className = 'tab-content active';
+    content.dataset.tabId = tabId;
+    content.innerHTML = window.AITabHTML?.getTabHTML?.() || '<div>AI Tab failed to load</div>';
+    document.getElementById('content-area').appendChild(content);
+    
+    // Initialize AI tab
+    if (window.AISearchTab) {
+      const aiInstance = new window.AISearchTab();
+      aiInstance.init(content);
+      content.aiInstance = aiInstance;
+    }
+
+    tab.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('tab-close')) switchToTab(tabId);
+    });
+    
+    tab.querySelector('.tab-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(tabId);
+    });
+
+    tabs.set(tabId, { type: 'ai' });
+    activeTabId = tabId;
+    
+    if (window.lucide) lucide.createIcons();
+    return tabId;
+  }
+
+  function createEditorTab() {
+    const tabId = `editor-${Date.now()}`;
+    
+    deactivateAllTabs();
+    
+    const tab = document.createElement('div');
+    tab.className = 'tab active';
+    tab.dataset.tabId = tabId;
+    tab.innerHTML = `
+      <i data-lucide="code-2" width="14" height="14"></i>
+      <span class="tab-title">Editor</span>
+      <span class="tab-close" data-tab-id="${tabId}">×</span>
+    `;
+    document.getElementById('tab-bar').appendChild(tab);
+    
+    const content = document.createElement('div');
+    content.className = 'tab-content active';
+    content.dataset.tabId = tabId;
+    content.innerHTML = window.EditorTabHTML?.getTabHTML?.() || '<div>Editor failed to load</div>';
+    document.getElementById('content-area').appendChild(content);
+    
+    // Initialize editor tab
+    if (window.EditorTab) {
+      const editorInstance = new window.EditorTab();
+      editorInstance.init(content);
+      content.editorInstance = editorInstance;
+    }
+
+    tab.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('tab-close')) switchToTab(tabId);
+    });
+    
+    tab.querySelector('.tab-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(tabId);
+    });
+
+    tabs.set(tabId, { type: 'editor' });
+    activeTabId = tabId;
+    
+    if (window.lucide) lucide.createIcons();
+    return tabId;
+  }
+
+  function deactivateAllTabs() {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  }
+
+  function switchToTab(tabId) {
+    deactivateAllTabs();
+    
+    const tab = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+    const content = document.querySelector(`.tab-content[data-tab-id="${tabId}"]`);
+    
+    tab?.classList.add('active');
+    content?.classList.add('active');
+    activeTabId = tabId;
+
+    // Update URL bar for browser tabs
+    const webview = content?.querySelector('webview');
+    if (webview) {
+      document.getElementById('url-bar').value = webview.getURL() || '';
+    }
+  }
+
+  function closeTab(tabId) {
+    const tab = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+    const content = document.querySelector(`.tab-content[data-tab-id="${tabId}"]`);
+    
+    // Cleanup instances
+    content?.aiInstance?.destroy?.();
+    content?.editorInstance?.destroy?.();
+    
+    tab?.remove();
+    content?.remove();
+    tabs.delete(tabId);
+    
+    // Switch to another tab
+    if (activeTabId === tabId) {
+      const remaining = document.querySelectorAll('.tab');
+      if (remaining.length > 0) {
+        switchToTab(remaining[remaining.length - 1].dataset.tabId);
+      } else {
+        createBrowserTab('https://duckduckgo.com');
+      }
+    }
+  }
+
+  // Expose for debugging
+  window.createBrowserTab = createBrowserTab;
+  window.createAITab = createAITab;
+  window.createEditorTab = createEditorTab;
+
+})();
+
+renderer/ai-search-tab.js - AI Assistant Logic
+
+Purpose: Handles chat, code generation, web search, streaming responses.
+
+JavaScript
+
+(function() {
+  'use strict';
+
+  class AISearchTab {
+    constructor() {
+      this.isRunning = false;
+      this.isProcessing = false;
+      this.conversationHistory = [];
+      this.el = null;
+      this.container = null;
+      this.statusInterval = null;
+      this.codePanel = null;
+    }
+
+    async init(container) {
+      // Add CSS, cache elements, bind events
+      // Load models, start status polling
+    }
+
+    cacheElements() {
+      this.el = {
+        modelSelect: $('#ai-model-select'),
+        gpuMode: $('#ai-gpu-mode'),
+        ctxSize: $('#ai-ctx-size'),
+        toggleBtn: $('#ai-toggle-btn'),
+        status: $('#ai-status'),
+        messages: $('#messages'),
+        input: $('#user-input'),
+        // ... etc
+      };
+    }
+
+    async toggleServer() {
+      const gpuMode = this.el.gpuMode?.value || 'full';
+      const ctxSize = parseInt(this.el.ctxSize?.value || '8192', 10);
+      const gpuSettings = this.getGpuSettings(gpuMode);
+
+      await window.electronAPI.llamaStart(modelPath, {
+        ctxSize,
+        ...gpuSettings
+      });
+    }
+
+    getGpuSettings(mode) {
+      switch (mode) {
+        case 'full': return { ngl: 99 };
+        case 'hybrid': return { ngl: 40, tensorOffload: 'blk\\.\\d+\\.ffn=CPU' };
+        case 'cpu': return { ngl: 0 };
+        default: return { ngl: 99 };
+      }
+    }
+
+    async handleSubmit() {
+      const mode = detectMode(input);
+      switch (mode) {
+        case 'search': await this.handleSearch(query); break;
+        case 'code': await this.handleCode(query); break;
+        default: await this.handleChat(query);
+      }
+    }
+
+    async handleChat(query) {
+      // Uses streaming for real-time output
+      const channelId = await window.electronAPI.llamaStreamChat(messages, options);
+      
+      window.electronAPI.onLlamaStream(channelId, (data) => {
+        if (data.type === 'chunk') {
+          fullContent += data.content;
+          msgEl.textContent = fullContent;
+        } else if (data.type === 'done') {
+          this.updateMsg(msgEl, fullContent);
+        }
+      });
+    }
+
+    async handleCode(query) {
+      // Generate code, show in panel, verify with codeReviser
+    }
+
+    async handleSearch(query) {
+      // Search web, display results with images
+    }
+
+    destroy() {
+      clearInterval(this.statusInterval);
+    }
+  }
+
+  window.AISearchTab = AISearchTab;
+})();
+
+renderer/editor-tab.js - Code Editor Logic
+
+Purpose: Monaco editor integration, file management, AI assistance.
+
+JavaScript
+
+(function() {
+  'use strict';
+
+  class EditorTab {
+    constructor() {
+      this.editor = null;
+      this.files = new Map();
+      this.currentFile = null;
+      this.openTabs = [];
+    }
+
+    async init(container) {
+      // Load Monaco from CDN
+      // Initialize editor with custom theme
+      // Bind keyboard shortcuts
+    }
+
+    async loadMonaco() {
+      // Load Monaco editor from CDN
+      // Configure with dark theme, font ligatures, etc.
+    }
+
+    newFile() {
+      // Create untitled file, add tab
+    }
+
+    async openFile() {
+      // Use electron dialog to open file
+      const result = await window.electronAPI.openFile();
+      // Add to files map, create tab, switch to it
+    }
+
+    async saveFile() {
+      // Save current file using electron dialog
+      await window.electronAPI.saveFile({ path, name, content });
+    }
+
+    async openFolder() {
+      // Open folder, render file tree
+      const folder = await window.electronAPI.openFolder();
+      this.renderFileTree(folder);
+    }
+
+    switchToFile(id) {
+      // Save current, load new file into editor
+    }
+
+    closeTab(id) {
+      // Check modified, remove tab, switch to another
+    }
+
+    toggleAiSidebar() {
+      // Show/hide AI assistance panel
+    }
+
+    async sendAiMessage() {
+      // Get selected code, send to LLM for help
+    }
+
+    destroy() {
+      this.editor?.dispose();
+    }
+  }
+
+  window.EditorTab = EditorTab;
+})();
+
+renderer/ai-utils.js - AI Helper Functions
+
+JavaScript
+
+(function() {
+  'use strict';
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function formatMessage(content) {
+    if (!content) return '';
+    
+    // Convert markdown to HTML
+    return content
+      .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+      .replace(/\n/g, '<br>');
+  }
+
+  function formatSearchResults(results, query) {
+    // Render search results as cards with images
+    return results.map(r => `
+      <div class="search-card">
+        ${r.imageUrl ? `<img src="${r.imageUrl}" alt="">` : ''}
+        <a href="${r.url}" target="_blank">${r.title}</a>
+        <p>${r.snippet}</p>
+      </div>
+    `).join('');
+  }
+
+  function detectMode(input) {
+    if (!input) return 'chat';
+    const text = input.trim().toLowerCase();
+    
+    if (text.startsWith('?') || text.startsWith('/search')) return 'search';
+    
+    const codeKeywords = ['write', 'create', 'build', 'make', 'generate', 'code', 'function', 'class', 'script'];
+    if (codeKeywords.some(k => text.includes(k))) return 'code';
+    
+    return 'chat';
+  }
+
+  window.AIUtils = { escapeHtml, formatMessage, formatSearchResults, detectMode };
+})();
+
+styles/app.css - Main Stylesheet
+
+CSS
+
+/* Reset & Base */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #0a0a0a;
+  color: #e0e0e0;
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Custom Titlebar */
+.titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 32px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+  -webkit-app-region: drag;
+}
+
+.titlebar-drag {
+  flex: 1;
+  padding-left: 12px;
+}
+
+.app-title {
+  font-size: 12px;
+  color: #888;
+}
+
+.window-controls {
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+
+.window-controls button {
+  width: 46px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+}
+
+.window-controls button:hover { background: #333; color: #fff; }
+.window-controls button.close:hover { background: #e81123; }
+
+/* Navigation Bar */
+.navbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #151515;
+  border-bottom: 1px solid #252525;
+}
+
+.nav-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.nav-buttons button,
+.nav-btn {
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #888;
+  cursor: pointer;
+}
+
+.nav-buttons button:hover,
+.nav-btn:hover {
+  background: #252525;
+  color: #fff;
+}
+
+#url-bar {
+  flex: 1;
+  padding: 8px 14px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 20px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
+
+#url-bar:focus { border-color: #8a6bff; }
+
+/* Tab Bar */
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px 0;
+  background: #151515;
+  overflow-x: auto;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 200px;
+}
+
+.tab:hover { background: #252525; }
+.tab.active { background: #0a0a0a; color: #fff; border-color: #444; }
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-close {
+  opacity: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.tab:hover .tab-close { opacity: 1; }
+.tab-close:hover { background: #ef4444; color: #fff; }
+
+/* Content Area */
+.content-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.tab-content {
+  display: none;
+  position: absolute;
+  inset: 0;
+}
+
+.tab-content.active { display: flex; }
+
+.browser-view {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Settings Panel */
+.settings-panel {
+  position: fixed;
+  top: 80px;
+  right: 12px;
+  width: 280px;
+  padding: 16px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  display: none;
+  z-index: 1000;
+}
+
+.settings-panel.visible { display: block; }
+
+.settings-panel h3 { margin-bottom: 16px; }
+
+.settings-panel label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+/* Quick Access */
+.quick-access {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #111;
+  border-bottom: 1px solid #252525;
+}
+
+.quick-btn {
+  padding: 6px 14px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 16px;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quick-btn:hover {
+  background: #252525;
+  border-color: #8a6bff;
+  color: #fff;
+}
+
+/* Editor & AI button styles */
+#ai-btn:hover { border-color: #8a6bff; color: #8a6bff; }
+#editor-btn:hover { border-color: #22c55e; color: #22c55e; }
+
+🔄 Data Flow Summary
+
+text
+
+┌─────────────────────────────────────────────────────────────┐
+│                         USER                                 │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    index.html + app.js                       │
+│            (UI, tabs, navigation, settings)                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│  Browser Tab  │    │    AI Tab     │    │  Editor Tab   │
+│   (webview)   │    │(ai-search-tab)│    │ (editor-tab)  │
+└───────────────┘    └───────────────┘    └───────────────┘
+                              │                     │
+                              ▼                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      preload.js                              │
+│                  (secure IPC bridge)                         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        main.js                               │
+│                 (Electron main process)                      │
+└─────────────────────────────────────────────────────────────┘
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│  llamaServer  │    │ browserSearch │    │  adBlocker    │
+│   (LLM API)   │    │(web scraping) │    │  (blocking)   │
+└───────────────┘    └───────────────┘    └───────────────┘
+        │
+        ▼
+┌───────────────┐
+│ llama-server  │
+│   (binary)    │
+└───────────────┘
+
+✅ Feature Checklist
+Feature	Files	Status
+Custom titlebar	index.html, app.css	✅
+Tab management	app.js	✅
+Browser tabs	app.js (webview)	✅
+URL navigation	app.js	✅
+Ad blocking	adBlocker.js, main.js	✅
+AI chat	ai-search-tab.js, llamaServer.js	✅
+AI streaming	llamaServer.js (streamChat)	✅
+Code generation	ai-search-tab.js	✅
+Code verification	codeReviser.js	✅
+Web search	browserSearch.js	✅
+GPU mode selector	ai-search-tab.js	✅
+Context size selector	ai-search-tab.js	✅
+Code editor	editor-tab.js	✅
+File open/save	main.js, preload.js	✅
+Folder explorer	editor-tab.js	✅
+Editor AI sidebar	editor-tab.js	✅
+
+This is your complete project! Let me know if you need any specific file expanded or have questions.

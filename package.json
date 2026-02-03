@@ -3,11 +3,17 @@
   "version": "1.0.0",
   "description": "A focused social media browser that filters the junk",
   "main": "main.js",
+  "bin": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --enable-logging"
   },
   "dependencies": {
-    "electron": "^28.3.3"
+    "electron": "^40.1.0",
+    "node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "electron-packager": "^17.1.2",
+    "electron-rebuild": "^2.3.5"
   }
 }

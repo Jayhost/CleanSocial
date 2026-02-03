@@ -6,319 +6,35 @@
   <link rel="stylesheet" href="styles/app.css">
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  
-  <!-- AI SIDEBAR CSS (ADD THIS STYLE BLOCK) -->
-  <style>
-    /* ============== AI SIDEBAR ============== */
-    .ai-toggle {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 36px;
-      height: 36px;
-      color: #aaa;
-      cursor: pointer;
-      border-radius: 4px;
-      margin-left: 10px;
-      transition: all 0.2s;
-      flex-shrink: 0;
-    }
-    .ai-toggle:hover {
-      background: rgba(255,255,255,0.08);
-      color: #fff;
-    }
-    .ai-toggle.active {
-      background: rgba(138, 107, 255, 0.15);
-      color: #8a6bff;
-      box-shadow: 0 0 0 2px rgba(138, 107, 255, 0.2);
-    }
-
-    .ai-sidebar {
-      position: fixed;
-      top: 0;
-      left: -420px;
-      width: 400px;
-      height: 100%;
-      background: #1a1a1a;
-      border-right: 1px solid #333;
-      z-index: 2000;
-      display: flex;
-      flex-direction: column;
-      box-shadow: 5px 0 25px rgba(0,0,0,0.4);
-      transition: left 0.3s cubic-bezier(0.23, 1, 0.32, 1);
-      overflow: hidden;
-    }
-    .ai-sidebar.open {
-      left: 0;
-    }
-
-    .sidebar-header {
-      padding: 16px;
-      border-bottom: 1px solid #333;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-shrink: 0;
-    }
-    .sidebar-header h2 {
-      font-size: 1.3rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      color: #e0e0e0;
-    }
-    .sidebar-close {
-      background: #2d2d2d;
-      border: 1px solid #444;
-      color: #aaa;
-      width: 32px;
-      height: 32px;
-      border-radius: 6px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      flex-shrink: 0;
-    }
-    .sidebar-close:hover {
-      background: #3a3a3a;
-      color: #fff;
-      border-color: #555;
-    }
-
-    .model-selector {
-      padding: 14px 16px;
-      border-bottom: 1px solid #333;
-      background: #151515;
-      flex-shrink: 0;
-    }
-    #ai-model-select {
-      width: 100%;
-      background: #252525;
-      color: #e0e0e0;
-      border: 1px solid #444;
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 15px;
-      margin-top: 8px;
-      appearance: none;
-      background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23aaa' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 10px center;
-      background-size: 16px;
-    }
-    #ai-model-select:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-    .model-size {
-      font-size: 12px;
-      color: #777;
-      margin-top: 6px;
-      font-family: monospace;
-    }
-
-    .chat-container {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      background: #121212;
-    }
-    .chat-message {
-      max-width: 90%;
-      padding: 14px 18px;
-      border-radius: 14px;
-      line-height: 1.5;
-      position: relative;
-      font-size: 15px;
-    }
-    .user-message {
-      background: #2a3b5c;
-      align-self: flex-end;
-      border-bottom-right-radius: 4px;
-      margin-left: auto;
-    }
-    .ai-message {
-      background: #252525;
-      align-self: flex-start;
-      border-bottom-left-radius: 4px;
-    }
-    .ai-message.loading::after {
-      content: "▌";
-      display: inline-block;
-      animation: blink 1s infinite;
-      margin-left: 4px;
-    }
-    @keyframes blink {
-      50% { opacity: 0; }
-    }
-
-    .chat-input-container {
-      padding: 16px;
-      border-top: 1px solid #333;
-      background: #151515;
-      display: flex;
-      gap: 10px;
-      flex-shrink: 0;
-    }
-    #ai-chat-input {
-      flex: 1;
-      background: #252525;
-      color: #e0e0e0;
-      border: 1px solid #444;
-      border-radius: 10px;
-      padding: 14px 18px;
-      font-size: 15px;
-      resize: none;
-      min-height: 24px;
-      max-height: 120px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    #ai-chat-input:focus {
-      border-color: #8a6bff;
-      box-shadow: 0 0 0 2px rgba(138, 107, 255, 0.2);
-    }
-    #ai-chat-input:disabled {
-      background: #1e1e1e;
-      color: #666;
-      cursor: not-allowed;
-    }
-    .send-btn {
-      background: #8a6bff;
-      color: white;
-      border: none;
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      flex-shrink: 0;
-      box-shadow: 0 2px 8px rgba(138, 107, 255, 0.3);
-    }
-    .send-btn:hover:not(:disabled) {
-      background: #7a5bff;
-      transform: scale(1.05);
-    }
-    .send-btn:disabled {
-      background: #444;
-      cursor: not-allowed;
-      transform: none;
-      opacity: 0.7;
-    }
-    .send-btn:active {
-      transform: scale(0.95);
-    }
-
-    .sidebar-footer {
-      padding: 12px 16px;
-      border-top: 1px solid #333;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #151515;
-      flex-shrink: 0;
-    }
-    .status-indicator {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 14px;
-    }
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #ff5555;
-      flex-shrink: 0;
-    }
-    .status-dot.online {
-      background: #4ade80;
-      box-shadow: 0 0 8px #4ade80;
-    }
-    #ai-status-text {
-      color: #bbb;
-      font-weight: 500;
-    }
-    .start-btn {
-      background: #2d2d2d;
-      border: 1px solid #444;
-      color: #e0e0e0;
-      padding: 8px 16px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: 500;
-      transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .start-btn:hover:not(:disabled) {
-      background: #3a3a3a;
-      border-color: #555;
-    }
-    .start-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-    .start-btn.danger {
-      background: #ff5555;
-      border-color: #ff3333;
-    }
-    .start-btn.danger:hover {
-      background: #ff3333;
-    }
-
-    /* Prevent sidebar from covering titlebar controls */
-    @media (max-width: 1200px) {
-      .ai-sidebar {
-        width: 360px;
-      }
-    }
-    
-    /* Ensure sidebar appears above webviews but below devtools */
-    .ai-sidebar {
-      z-index: 2000;
-    }
-  </style>
 </head>
+
 <body>
-  
   <!-- Scanline effect -->
   <div class="scanlines"></div>
 
-  <!-- Custom Titlebar (MODIFIED: Added AI toggle) -->
+  <!-- Custom Titlebar -->
   <div class="titlebar">
     <div class="titlebar-drag">
       <div class="app-logo">
         <i data-lucide="sparkles"></i>
       </div>
       <span class="app-title">CLEAN SOCIAL</span>
-     
     </div>
     
-    <!-- AdBlock indicator in titlebar -->
+    <!-- AdBlock indicator -->
     <div class="adblock-indicator" id="adblock-indicator" title="Ads Blocked">
       <i data-lucide="shield-check"></i>
       <span id="blocked-count">0</span>
     </div>
     
     <div class="titlebar-controls">
-      <button onclick="browserAPI.minimize()" class="ctrl-btn">
+      <button onclick="window.electronAPI.windowMinimize()" class="ctrl-btn">
         <i data-lucide="minus"></i>
       </button>
-      <button onclick="browserAPI.maximize()" class="ctrl-btn">
+      <button onclick="window.electronAPI.windowMaximize()" class="ctrl-btn">
         <i data-lucide="square"></i>
       </button>
-      <button onclick="browserAPI.close()" class="ctrl-btn close">
+      <button onclick="window.electronAPI.windowClose()" class="ctrl-btn close">
         <i data-lucide="x"></i>
       </button>
     </div>
@@ -396,9 +112,17 @@
       <button class="quick-btn" data-url="https://discord.com/app" title="Discord">
         <i data-lucide="message-square"></i>
       </button>
-      <button class="quick-btn" id="ai-toggle" title="Toggle AI Assistant">
+      <!-- AI Tab Button -->
+      <button class="quick-btn ai-btn" id="ai-tab-btn" title="Open AI Assistant">
         <i data-lucide="bot"></i>
       </button>
+
+      <button class="quick-btn" id="editor-btn" title="Code Editor">
+        <i data-lucide="code-2" width="18" height="18"></i>
+      </button>
+      <button class="quick-btn" id="terminal-btn" title="Terminal">
+    <i data-lucide="terminal" width="18" height="18"></i>
+  </button>
     </div>
 
     <!-- Settings -->
@@ -418,7 +142,7 @@
   <div class="view-container" id="view-container">
   </div>
 
-  <!-- Settings Panel (UNCHANGED) -->
+  <!-- Settings Panel -->
   <div class="settings-panel" id="settings-panel">
     <div class="settings-header">
       <h2><i data-lucide="settings"></i> SETTINGS</h2>
@@ -569,58 +293,6 @@ promoted"></textarea>
     </div>
   </div>
 
-  <!-- <div id="editor-container" style="height: 400px; border: 1px solid #333; margin-top: 10px;"></div>
-<div class="editor-controls">
-  <button id="save-code">Save File</button>
-  <button id="copy-code">Copy All</button>
-</div> -->
-
-  <!-- AI SIDEBAR (ADDED HERE - BEFORE LOADING OVERLAY) -->
-  <div id="ai-sidebar" class="ai-sidebar">
-    <div class="sidebar-header">
-      <h2><i data-lucide="bot"></i> Local AI Assistant</h2>
-      <button id="close-ai-sidebar" class="sidebar-close">
-        <i data-lucide="x"></i>
-      </button>
-    </div>
-    
-    <div class="model-selector">
-      <select id="ai-model-select" disabled>
-        <option value="">Loading models...</option>
-      </select>
-      <div class="model-size" id="ai-model-size">No model loaded</div>
-    </div>
-    
-    <!-- <div class="sidebar-header">
-        <h2><i data-lucide="code"></i> Code Editor</h2>
-    </div>
-    
-    <div id="editor-container" style="height: 300px; width: 100%; background: #1e1e1e; border-bottom: 1px solid #333;"></div> -->
-    
-    <script src="scripts/editor-manager.js"></script>
-
-    <div class="chat-container" id="ai-chat-container">
-      <div class="chat-message ai-message">
-        Hello! I'm your local AI assistant running privately on your machine via Llama.cpp. How can I help you today?
-      </div>
-    </div>
-    
-    <div class="chat-input-container">
-      <textarea id="ai-chat-input" placeholder="Ask me anything..." rows="1" disabled></textarea>
-      <button id="ai-send-btn" class="send-btn" disabled>
-        <i data-lucide="send"></i>
-      </button>
-    </div>
-    
-    <div class="sidebar-footer">
-      <div class="status-indicator">
-        <div class="status-dot" id="ai-status-dot"></div>
-        <span id="ai-status-text">Offline</span>
-      </div>
-      <button id="ai-start-btn" class="start-btn">Start AI</button>
-    </div>
-  </div>
-
   <!-- Loading overlay -->
   <div class="loading-overlay" id="loading">
     <div class="loading-content">
@@ -629,12 +301,30 @@ promoted"></textarea>
     </div>
   </div>
 
+  <!-- Scripts -->
+   
   <script src="scripts/sounds.js"></script>
+  
+  <!-- AI Tab Scripts - loaded inline since we can't use require in browser context -->
+  <script src="renderer/ai-utils.js"></script>
+  <script src="renderer/ai-tab-html.js"></script>
+  <script src="renderer/ai-tab-css.js"></script>
+  <script src="renderer/ai-code-panel.js"></script>
+  <script src="renderer/ai-search-tab.js"></script>
+
+  <script src="renderer/editor-tab-html.js"></script>
+<script src="renderer/editor-tab-css.js"></script>
+<script src="renderer/editor-tab.js"></script> 
+
+<script src="renderer/terminal-tab-html.js"></script>
+<script src="renderer/terminal-tab-css.js"></script>
+<script src="renderer/terminal-tab.js"></script>
+
   <script src="scripts/app.js"></script>
-  <!-- AI SIDEBAR SCRIPT (ADD THIS) -->
-  <script src="scripts/ai-sidebar.js"></script>
+
+  
   <script>
-    // Initialize ALL Lucide icons (including AI sidebar)
+    // Initialize ALL Lucide icons
     lucide.createIcons();
   </script>
 </body>

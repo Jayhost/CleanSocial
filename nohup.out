@@ -1,0 +1,65 @@
+
+> social-cleaner-browser@1.0.0 start
+> electron .
+
+AdBlocker loaded: 93 domains, 26 patterns
+✅ node-pty loaded
+[3106501:0202/211559.309311:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.systemd1.Manager.StartTransientUnit: object_path= /org/freedesktop/systemd1: org.freedesktop.systemd1.UnitExists: Unit app-org.chromium.Chromium-3106501.scope was already loaded or has a fragment file.
+[3106501:0202/211602.560823:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3106501:0202/211602.562916:ERROR:content/browser/network_service_instance_impl.cc:610] Network service crashed or was terminated, restarting service.
+[3106501:0202/211602.569526:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3106501:0202/211602.569985:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3106501:0202/211602.571721:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3106501:0202/211602.572385:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3106501:0202/211602.573120:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3106501:0202/211602.573397:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3106501:0202/211602.573711:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3106501:0202/211602.573969:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3106501:0202/211602.574217:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3106501:0202/211602.574227:FATAL:content/browser/gpu/gpu_data_manager_impl_private.cc:415] GPU process isn't usable. Goodbye.
+
+> social-cleaner-browser@1.0.0 start
+> electron .
+
+AdBlocker loaded: 93 domains, 26 patterns
+✅ node-pty loaded
+[3108448:0202/211612.996290:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.systemd1.Manager.StartTransientUnit: object_path= /org/freedesktop/systemd1: org.freedesktop.systemd1.UnitExists: Unit app-org.chromium.Chromium-3108448.scope was already loaded or has a fragment file.
+/home/ian/social-dashboard/node_modules/electron/dist/electron exited with signal SIGINT
+
+> social-cleaner-browser@1.0.0 start
+> electron .
+
+AdBlocker loaded: 93 domains, 26 patterns
+✅ node-pty loaded
+[3115194:0202/211734.694048:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.systemd1.Manager.StartTransientUnit: object_path= /org/freedesktop/systemd1: org.freedesktop.systemd1.UnitExists: Unit app-org.chromium.Chromium-3115194.scope was already loaded or has a fragment file.
+[3115194:0202/211742.926128:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3115194:0202/211742.928504:ERROR:content/browser/network_service_instance_impl.cc:610] Network service crashed or was terminated, restarting service.
+[3115194:0202/211742.935230:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3115194:0202/211742.936231:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3115194:0202/211742.938446:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3115194:0202/211742.939399:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3115194:0202/211742.940275:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3115194:0202/211742.940586:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3115194:0202/211742.940928:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3115194:0202/211742.941194:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3115194:0202/211742.941462:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3115194:0202/211742.941473:FATAL:content/browser/gpu/gpu_data_manager_impl_private.cc:415] GPU process isn't usable. Goodbye.
+
+> social-cleaner-browser@1.0.0 start
+> electron .
+
+AdBlocker loaded: 93 domains, 26 patterns
+✅ node-pty loaded
+[3119102:0202/211755.001651:ERROR:dbus/object_proxy.cc:573] Failed to call method: org.freedesktop.systemd1.Manager.StartTransientUnit: object_path= /org/freedesktop/systemd1: org.freedesktop.systemd1.UnitExists: Unit app-org.chromium.Chromium-3119102.scope was already loaded or has a fragment file.
+[3119102:0202/211757.571997:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3119102:0202/211757.573915:ERROR:content/browser/network_service_instance_impl.cc:610] Network service crashed or was terminated, restarting service.
+[3119102:0202/211757.579071:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3119102:0202/211757.580534:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3119102:0202/211757.581411:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[3119102:0202/211757.583100:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3119102:0202/211757.583691:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3119102:0202/211757.584000:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3119102:0202/211757.584295:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3119102:0202/211757.584527:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3119102:0202/211757.584753:ERROR:content/browser/gpu/gpu_process_host.cc:998] GPU process launch failed: error_code=1002
+[3119102:0202/211757.584823:FATAL:content/browser/gpu/gpu_data_manager_impl_private.cc:415] GPU process isn't usable. Goodbye.
