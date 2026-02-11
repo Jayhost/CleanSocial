@@ -10,6 +10,13 @@
         background: #1e1e1e;
         color: #cccccc;
         font-family: system-ui, -apple-system, sans-serif;
+        /* FIX: Establish real height */
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        overflow: hidden;
       }
 
       /* Header */
@@ -20,6 +27,7 @@
         background: #252526;
         border-bottom: 1px solid #3c3c3c;
         gap: 12px;
+        flex-shrink: 0;       /* FIX: Don't shrink header */
       }
 
       .editor-logo {
@@ -126,6 +134,7 @@
         display: flex;
         flex: 1;
         overflow: hidden;
+        min-height: 0;          /* FIX: Allow flex shrink */
       }
 
       /* File Explorer */
@@ -136,6 +145,7 @@
         display: flex;
         flex-direction: column;
         flex-shrink: 0;
+        min-height: 0;          /* FIX */
       }
 
       .file-explorer.collapsed {
@@ -154,12 +164,14 @@
         text-transform: uppercase;
         color: #888;
         border-bottom: 1px solid #3c3c3c;
+        flex-shrink: 0;         /* FIX */
       }
 
       .file-tree {
         flex: 1;
         overflow-y: auto;
         padding: 8px 0;
+        min-height: 0;          /* FIX */
       }
 
       .empty-explorer {
@@ -210,6 +222,8 @@
         display: flex;
         flex-direction: column;
         min-width: 0;
+        min-height: 0;          /* FIX */
+        overflow: hidden;       /* FIX */
       }
 
       .editor-info-bar {
@@ -221,6 +235,7 @@
         border-bottom: 1px solid #3c3c3c;
         font-size: 11px;
         color: #888;
+        flex-shrink: 0;         /* FIX */
       }
 
       #language-select {
@@ -235,6 +250,7 @@
       #monaco-container {
         flex: 1;
         overflow: hidden;
+        min-height: 0;          /* FIX */
       }
 
       /* AI Sidebar */
@@ -244,6 +260,7 @@
         border-left: 1px solid #3c3c3c;
         display: none;
         flex-direction: column;
+        min-height: 0;          /* FIX */
       }
 
       .ai-sidebar.visible {
@@ -258,12 +275,14 @@
         border-bottom: 1px solid #3c3c3c;
         font-weight: 600;
         color: #8a6bff;
+        flex-shrink: 0;         /* FIX */
       }
 
       .ai-chat {
         flex: 1;
         overflow-y: auto;
         padding: 12px;
+        min-height: 0;          /* FIX */
       }
 
       .ai-input-area {
@@ -271,6 +290,7 @@
         gap: 8px;
         padding: 12px;
         border-top: 1px solid #3c3c3c;
+        flex-shrink: 0;         /* FIX */
       }
 
       .ai-input-area textarea {
@@ -302,6 +322,7 @@
         background: #007acc;
         font-size: 11px;
         color: white;
+        flex-shrink: 0;         /* FIX */
       }
 
       .icon-btn {
@@ -316,6 +337,41 @@
       .icon-btn:hover {
         background: #3c3c3c;
         color: #fff;
+      }
+
+      /* ==================== SCROLLBARS ==================== */
+
+      .file-tree::-webkit-scrollbar,
+      .ai-chat::-webkit-scrollbar,
+      .editor-tabs::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      .file-tree::-webkit-scrollbar-track,
+      .ai-chat::-webkit-scrollbar-track,
+      .editor-tabs::-webkit-scrollbar-track {
+        background: #1e1e1e;
+      }
+
+      .file-tree::-webkit-scrollbar-thumb,
+      .ai-chat::-webkit-scrollbar-thumb,
+      .editor-tabs::-webkit-scrollbar-thumb {
+        background: #424242;
+        border-radius: 4px;
+      }
+
+      .file-tree::-webkit-scrollbar-thumb:hover,
+      .ai-chat::-webkit-scrollbar-thumb:hover,
+      .editor-tabs::-webkit-scrollbar-thumb:hover {
+        background: #555;
+      }
+
+      .file-tree,
+      .ai-chat,
+      .editor-tabs {
+        scrollbar-width: thin;
+        scrollbar-color: #424242 #1e1e1e;
       }
     `;
   }
