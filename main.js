@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, session, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const AdBlocker = require('./src/adBlocker');
@@ -15,7 +15,6 @@ const browserSearch = new BrowserSearchManager();
 const codeReviser = new CodeReviser(browserSearch);
 
 // Tensor offload pattern for GPT-OSS 20B on limited VRAM
-// Offloads FFN layers 12-24 to CPU
 const TENSOR_OFFLOAD_PATTERN = [
   'blk\\.12\\.ffn_(gate|down).*=CPU',
   'blk\\.13\\.ffn_(up|down|gate)_(ch|)exps=CPU',
@@ -76,13 +75,22 @@ ipcMain.on('window-close', () => {
   if (mainWindow) mainWindow.close();
 });
 
-// AdBlock Handlers
+// --- CHANGE 1: Enhanced AdBlock IPC handlers ---
 ipcMain.handle('adblock-get-count', () => adBlocker.getBlockedCount());
 ipcMain.handle('adblock-set-enabled', (event, enabled) => {
   adBlocker.setEnabled(enabled);
   return { success: true };
 });
 ipcMain.handle('adblock-is-enabled', () => adBlocker.enabled);
+ipcMain.handle('adblock-get-stats', () => adBlocker.getStats());
+ipcMain.handle('adblock-whitelist-add', (event, domain) => {
+  adBlocker.addWhitelist(domain);
+  return { success: true };
+});
+ipcMain.handle('adblock-whitelist-remove', (event, domain) => {
+  adBlocker.removeWhitelist(domain);
+  return { success: true };
+});
 
 // ==================== LLAMA SERVER HANDLERS ====================
 
@@ -125,24 +133,22 @@ ipcMain.handle('llama-chat', async (event, messages, options) => {
   return await llamaServer.chat(messages, options);
 });
 
-// Streaming chat handler
 ipcMain.handle('llama-stream-chat', async (event, messages, options) => {
   const channelId = `llama-stream-${Date.now()}`;
-  
   const stream = llamaServer.streamChat(messages, options);
-  
+
   stream.on('chunk', (content) => {
     event.sender.send(channelId, { type: 'chunk', content });
   });
-  
+
   stream.on('done', () => {
     event.sender.send(channelId, { type: 'done' });
   });
-  
+
   stream.on('error', (err) => {
     event.sender.send(channelId, { type: 'error', error: err.message });
   });
-  
+
   return channelId;
 });
 
@@ -163,7 +169,6 @@ ipcMain.handle('llama-stream', async (event, prompt, options) => {
     stream.on('error', (err) => {
       event.sender.send(responseChannel, { error: err.message });
     });
-
   } catch (err) {
     event.sender.send(responseChannel, { error: err.message });
   }
@@ -171,7 +176,6 @@ ipcMain.handle('llama-stream', async (event, prompt, options) => {
   return responseChannel;
 });
 
-// Code Revision
 ipcMain.handle('code-revise', async (event, originalCode, searchQuery) => {
   if (!llamaServer.isRunning) {
     throw new Error('Server not running. Start it first.');
@@ -186,7 +190,6 @@ ipcMain.handle('code-revise', async (event, originalCode, searchQuery) => {
   return result;
 });
 
-// Model list
 ipcMain.handle('llama-get-models', async () => {
   const modelsDir = path.join(__dirname, 'llama', 'models');
   try {
@@ -213,7 +216,6 @@ ipcMain.handle('llama-get-models', async () => {
   return models.filter(m => m !== null);
 });
 
-// Browser Search Handlers
 ipcMain.handle('browser-search', async (event, query, options) => {
   return await browserSearch.search(query, options);
 });
@@ -226,8 +228,6 @@ ipcMain.handle('browser-fetch-content', async (event, url) => {
   return await browserSearch.fetchPageContent(url);
 });
 
-
-// Open file dialog
 ipcMain.handle('open-file', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
@@ -241,7 +241,7 @@ ipcMain.handle('open-file', async () => {
 
   const filePath = result.filePaths[0];
   const content = fs.readFileSync(filePath, 'utf-8');
-  
+
   return {
     path: filePath,
     name: path.basename(filePath),
@@ -249,16 +249,13 @@ ipcMain.handle('open-file', async () => {
   };
 });
 
-// Save file dialog
 ipcMain.handle('save-file', async (event, { path: filePath, name, content }) => {
   let savePath = filePath;
 
   if (!savePath) {
     const result = await dialog.showSaveDialog({
       defaultPath: name || 'untitled.txt',
-      filters: [
-        { name: 'All Files', extensions: ['*'] }
-      ]
+      filters: [{ name: 'All Files', extensions: ['*'] }]
     });
 
     if (result.canceled || !result.filePath) return null;
@@ -266,19 +263,17 @@ ipcMain.handle('save-file', async (event, { path: filePath, name, content }) => 
   }
 
   fs.writeFileSync(savePath, content, 'utf-8');
-  
+
   return {
     path: savePath,
     name: path.basename(savePath)
   };
 });
 
-// Read file
 ipcMain.handle('read-file', async (event, filePath) => {
   return fs.readFileSync(filePath, 'utf-8');
 });
 
-// Open folder
 ipcMain.handle('open-folder', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory']
@@ -287,7 +282,7 @@ ipcMain.handle('open-folder', async () => {
   if (result.canceled || !result.filePaths[0]) return null;
 
   const folderPath = result.filePaths[0];
-  
+
   function readDir(dirPath) {
     const items = fs.readdirSync(dirPath, { withFileTypes: true });
     return items
@@ -321,7 +316,6 @@ ipcMain.handle('open-folder', async () => {
   };
 });
 
-// File Save Handler
 ipcMain.handle('save-editor-file', async (event, content) => {
   const { filePath } = await dialog.showSaveDialog({
     title: 'Save File',
@@ -359,33 +353,32 @@ ipcMain.handle('pty-create', async (event, shellType) => {
 
   const id = `pty-${Date.now()}`;
 
-  // Determine shell
-  let shell, args;
+  let shellCmd, args;
   if (process.platform === 'win32') {
     switch (shellType) {
       case 'powershell':
-        shell = 'powershell.exe';
+        shellCmd = 'powershell.exe';
         args = [];
         break;
       case 'cmd':
-        shell = 'cmd.exe';
+        shellCmd = 'cmd.exe';
         args = [];
         break;
       case 'bash':
-        shell = 'bash.exe';
+        shellCmd = 'bash.exe';
         args = [];
         break;
       default:
-        shell = process.env.COMSPEC || 'cmd.exe';
+        shellCmd = process.env.COMSPEC || 'cmd.exe';
         args = [];
     }
   } else {
-    shell = process.env.SHELL || '/bin/bash';
+    shellCmd = process.env.SHELL || '/bin/bash';
     args = [];
   }
 
   try {
-    const ptyProcess = pty.spawn(shell, args, {
+    const ptyProcess = pty.spawn(shellCmd, args, {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
@@ -395,7 +388,6 @@ ipcMain.handle('pty-create', async (event, shellType) => {
 
     ptyProcesses.set(id, ptyProcess);
 
-    // Send data to renderer
     ptyProcess.onData((data) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send(`pty-data-${id}`, data);
@@ -409,9 +401,8 @@ ipcMain.handle('pty-create', async (event, shellType) => {
       ptyProcesses.delete(id);
     });
 
-    console.log(`✅ PTY created: ${id} (${shell})`);
+    console.log(`✅ PTY created: ${id} (${shellCmd})`);
     return id;
-
   } catch (e) {
     console.error('Failed to create PTY:', e);
     throw e;
@@ -445,10 +436,9 @@ ipcMain.handle('pty-kill', (event, id) => {
   }
 });
 
-// Cleanup on app quit
 app.on('before-quit', () => {
-  ptyProcesses.forEach((pty, id) => {
-    try { pty.kill(); } catch {}
+  ptyProcesses.forEach((p, id) => {
+    try { p.kill(); } catch {}
   });
   ptyProcesses.clear();
 });
@@ -457,37 +447,23 @@ app.on('before-quit', () => {
 
 app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy');
 
-app.whenReady().then(() => {
-  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-    if (adBlocker.shouldBlock(details.url)) {
-      callback({ cancel: true });
-      return;
-    }
-    callback({ cancel: false });
-  });
+// --- CHANGE 2: async init with adBlocker.initialize() + setupSession ---
+app.whenReady().then(async () => {
+  // Initialize ad blocker - downloads filter lists, loads cache
+  await adBlocker.initialize();
 
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const headers = { ...details.responseHeaders };
-    const headersToRemove = [
-      'x-frame-options', 'X-Frame-Options',
-      'content-security-policy', 'Content-Security-Policy',
-      'cross-origin-opener-policy', 'Cross-Origin-Opener-Policy',
-      'cross-origin-embedder-policy', 'Cross-Origin-Embedder-Policy',
-      'cross-origin-resource-policy', 'Cross-Origin-Resource-Policy'
-    ];
-    headersToRemove.forEach(header => delete headers[header]);
-    callback({ responseHeaders: headers });
-  });
+  // Let adBlocker install all session handlers (replaces manual onBeforeRequest etc.)
+  adBlocker.setupSession(session.defaultSession);
 
-  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    details.requestHeaders['User-Agent'] =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-    delete details.requestHeaders['X-Client-Data'];
-    callback({ requestHeaders: details.requestHeaders });
-  });
+  // Also setup for the persist:main partition used by webviews
+  const persistSession = session.fromPartition('persist:main');
+  adBlocker.setupSession(persistSession);
 
   createWindow();
 });
+
+
+const injectedContents = new WeakSet();
 
 app.on('web-contents-created', (event, contents) => {
   contents.setWindowOpenHandler(({ url }) => {
@@ -526,8 +502,39 @@ app.on('web-contents-created', (event, contents) => {
       return { action: 'deny' };
     }
 
-    return { action: 'allow' };
+    if (contents.getType() === 'webview') {
+      contents.loadURL(url);
+      return { action: 'deny' };
+    }
+
+    shell.openExternal(url);
+    return { action: 'deny' };
   });
+
+  // Only attach listeners once per webContents
+  if (!injectedContents.has(contents)) {
+    injectedContents.add(contents);
+
+    contents.on('did-finish-load', () => {
+      try {
+        const url = contents.getURL();
+        if (url && url.startsWith('http')) {
+          const hostname = new URL(url).hostname;
+          adBlocker.injectCosmetic(contents, hostname);
+        }
+      } catch {}
+    });
+
+    contents.on('did-navigate-in-page', () => {
+      try {
+        const url = contents.getURL();
+        if (url && url.startsWith('http')) {
+          const hostname = new URL(url).hostname;
+          adBlocker.injectCosmetic(contents, hostname);
+        }
+      } catch {}
+    });
+  }
 
   contents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     callback(true);
