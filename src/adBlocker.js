@@ -499,6 +499,7 @@ class AdBlocker {
     const majorSites = [
       'x.com',
       'twitter.com',
+      'startpage.com',
       'facebook.com',
       'instagram.com',
       'reddit.com',
